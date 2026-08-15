@@ -1,0 +1,35 @@
+import { NestFactory } from '@nestjs/core';
+import { ValidationPipe } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { AppModule } from './app.module';
+import { HttpExceptionFilter } from '@app/common';
+import { AuthConfig } from './config/configuration';
+
+async function bootstrap() {
+  const app = await NestFactory.create(AppModule);
+  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+  app.useGlobalFilters(new HttpExceptionFilter());
+
+  const configService = app.get<ConfigService<AuthConfig, true>>(ConfigService);
+  // The mobile app targets native (no CORS enforcement there), but Expo's
+  // web target and any future browser-based client need this — open in dev,
+  // tightened once a real web origin exists in production.
+  if (configService.get('env', { infer: true }) !== 'production') {
+    app.enableCors();
+  }
+
+  const swaggerConfig = new DocumentBuilder()
+    .setTitle('Fiam Auth API')
+    .setDescription(
+      'Signup, sign-in, KYC/BVN, devices, and settings/security endpoints.',
+    )
+    .setVersion('1.0')
+    .addBearerAuth()
+    .build();
+  const document = SwaggerModule.createDocument(app, swaggerConfig);
+  SwaggerModule.setup('docs', app, document);
+
+  await app.listen(configService.get('port', { infer: true }));
+}
+bootstrap();

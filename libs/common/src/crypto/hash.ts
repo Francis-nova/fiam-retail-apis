@@ -1,0 +1,9 @@
+import { createHash } from 'crypto';
+
+export function sha256(input: string): string {
+  return createHash('sha256').update(input).digest('hex');
+}
+
+export function sha512(input: string): string {
+  return createHash('sha512').update(input).digest('hex');
+}
