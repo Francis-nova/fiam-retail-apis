@@ -74,6 +74,13 @@ export class Transaction {
   @Column({ name: 'amount_minor', type: 'bigint' })
   amountMinor: string;
 
+  // The transfer fee charged on top of amountMinor for a DEBIT (payout) —
+  // wallet's actual debit is amountMinor + feeMinor, while amountMinor alone
+  // is what reaches the recipient. Null for CREDIT rows and for any DEBIT
+  // predating this column. See payouts/fee.util.ts.
+  @Column({ name: 'fee_minor', type: 'bigint', nullable: true })
+  feeMinor: string | null;
+
   // Set for DEBIT (payout) transactions — links to the saved recipient this
   // payout went to. Null for CREDIT (payin) transactions, which have no
   // beneficiary concept. See beneficiaries/entities/beneficiary.entity.ts.

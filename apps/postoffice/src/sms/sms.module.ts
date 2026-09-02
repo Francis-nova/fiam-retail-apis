@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { AuthConfig } from '../config/configuration';
+import { PostofficeConfig } from '../config/configuration';
 import { SMS_PROVIDER } from './sms-provider.interface';
 import { TermiiSmsProvider } from './termii-sms.provider';
 
@@ -14,7 +14,7 @@ import { TermiiSmsProvider } from './termii-sms.provider';
       provide: SMS_PROVIDER,
       inject: [ConfigService, TermiiSmsProvider],
       useFactory: (
-        configService: ConfigService<AuthConfig, true>,
+        configService: ConfigService<PostofficeConfig, true>,
         termii: TermiiSmsProvider,
       ) => {
         const provider = configService.get('sms.provider', { infer: true });

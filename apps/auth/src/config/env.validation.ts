@@ -16,13 +16,9 @@ export const envSchema = Joi.object({
   OTP_MAX_ATTEMPTS: Joi.number().default(5),
   OTP_RESEND_COOLDOWN_SECONDS: Joi.number().default(60),
   // Provider credentials are intentionally optional at boot (not .required()):
-  // the rest of the auth service (register/login/email OTP) must keep working
-  // in dev/demo before real Termii/QoreID keys are provisioned. The providers
-  // themselves throw a clear error if invoked without a key configured.
-  SMS_PROVIDER: Joi.string().valid('termii').default('termii'),
-  TERMII_API_KEY: Joi.string().allow('').default(''),
-  TERMII_SENDER_ID: Joi.string().allow('').default(''),
-  TERMII_BASE_URL: Joi.string().uri().default('https://api.ng.termii.com'),
+  // the rest of the auth service (register/login) must keep working in
+  // dev/demo before real QoreID keys are provisioned. The provider itself
+  // throws a clear error if invoked without a key configured.
   KYC_PROVIDER: Joi.string().valid('qoreid').default('qoreid'),
   QOREID_CLIENT_ID: Joi.string().allow('').default(''),
   QOREID_SECRET: Joi.string().allow('').default(''),

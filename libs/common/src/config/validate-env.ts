@@ -11,5 +11,5 @@ export function validateEnv<T extends Record<string, unknown>>(
   if (error) {
     throw new Error(`Config validation error: ${error.message}`);
   }
-  return value as T;
+  return value;
 }

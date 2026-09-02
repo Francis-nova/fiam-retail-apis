@@ -1,0 +1,16 @@
+
+> apis@0.0.1 build
+> npm run build:auth && npm run build:postoffice && npm run build:payment
+
+
+> apis@0.0.1 build:auth
+> nest build auth
+
+
+> apis@0.0.1 build:postoffice
+> nest build postoffice
+
+
+> apis@0.0.1 build:payment
+> nest build payment
+

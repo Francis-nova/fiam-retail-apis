@@ -30,6 +30,10 @@ export class UsersService {
     return this.usersRepo.findOne({ where: { bvn } });
   }
 
+  findByNin(nin: string): Promise<User | null> {
+    return this.usersRepo.findOne({ where: { nin } });
+  }
+
   async findById(id: string): Promise<User> {
     const user = await this.usersRepo.findOne({ where: { id } });
     if (!user) {
@@ -83,6 +87,13 @@ export class UsersService {
 
   async setDateOfBirth(id: string, dateOfBirth: string): Promise<void> {
     await this.usersRepo.update(id, { dateOfBirth });
+  }
+
+  // No separate submit-then-verify steps like BVN's (no OTP hop for NIN) —
+  // set and mark verified together, only ever called once QoreID has
+  // already confirmed a name match.
+  async setNinVerified(id: string, nin: string): Promise<void> {
+    await this.usersRepo.update(id, { nin, ninVerifiedAt: new Date() });
   }
 
   // Atomic conditional claim — not read-then-write — so the two independent

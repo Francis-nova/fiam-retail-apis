@@ -21,6 +21,7 @@ export interface TransactionResponse {
   status: string;
   currency: string;
   amountMinor: string;
+  feeMinor: string | null;
   balanceAfterMinor: string | null;
   reference: string;
   provider: string;
@@ -66,6 +67,7 @@ function toResponse(transaction: Transaction): TransactionResponse {
     status: transaction.status,
     currency: transaction.currency,
     amountMinor: transaction.amountMinor,
+    feeMinor: transaction.feeMinor,
     balanceAfterMinor: transaction.balanceAfterMinor,
     reference: transaction.reference,
     provider: transaction.provider,

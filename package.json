@@ -6,9 +6,11 @@
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
+    "build": "npm run build:auth && npm run build:postoffice && npm run build:payment",
     "build:auth": "nest build auth",
     "build:postoffice": "nest build postoffice",
     "build:payment": "nest build payment",
+    "dev": "concurrently -n auth,payment,postoffice -c blue,green,yellow \"npm:start:auth:dev\" \"npm:start:payment:dev\" \"npm:start:postoffice:dev\"",
     "format": "prettier --write \"apps/**/*.ts\" \"libs/**/*.ts\"",
     "start:auth": "nest start auth",
     "start:auth:dev": "nest start auth --watch",
@@ -29,11 +31,11 @@
     "migration:revert:payment": "npm run typeorm -- migration:revert -d apps/payment/src/database/data-source.ts"
   },
   "dependencies": {
+    "@nestjs/bullmq": "^11.0.5",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.4",
     "@nestjs/core": "^11.0.1",
     "@nestjs/jwt": "^11.0.2",
-    "@nestjs/bullmq": "^11.0.5",
     "@nestjs/microservices": "^11.2.1",
     "@nestjs/passport": "^11.0.5",
     "@nestjs/platform-express": "^11.0.1",
@@ -53,9 +55,11 @@
     "pg": "^8.23.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
+    "tesseract.js": "^7.0.0",
     "typeorm": "^0.3.31"
   },
   "devDependencies": {
+    "concurrently": "^10.0.5",
     "@eslint/eslintrc": "^3.2.0",
     "@eslint/js": "^9.18.0",
     "@nestjs/cli": "^11.0.0",

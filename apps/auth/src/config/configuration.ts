@@ -19,14 +19,6 @@ export interface AuthConfig {
     maxAttempts: number;
     resendCooldownSeconds: number;
   };
-  sms: {
-    provider: string;
-    termii: {
-      apiKey: string;
-      senderId: string;
-      baseUrl: string;
-    };
-  };
   kyc: {
     provider: string;
     qoreid: {
@@ -68,14 +60,6 @@ export default (): AuthConfig => ({
       process.env.OTP_RESEND_COOLDOWN_SECONDS ?? '60',
       10,
     ),
-  },
-  sms: {
-    provider: process.env.SMS_PROVIDER ?? 'termii',
-    termii: {
-      apiKey: process.env.TERMII_API_KEY ?? '',
-      senderId: process.env.TERMII_SENDER_ID ?? '',
-      baseUrl: process.env.TERMII_BASE_URL ?? 'https://api.ng.termii.com',
-    },
   },
   kyc: {
     provider: process.env.KYC_PROVIDER ?? 'qoreid',

@@ -69,6 +69,16 @@ export class User {
   @Column({ name: 'date_of_birth', type: 'date', nullable: true })
   dateOfBirth: string | null;
 
+  // National Identification Number — Tier 3 upgrade requirement, verified
+  // against QoreID's NIN identity endpoint. Same "reference to an
+  // already-verified identity" rationale as bvn above.
+  @Index({ unique: true, where: '"nin" IS NOT NULL' })
+  @Column({ type: 'varchar', nullable: true })
+  nin: string | null;
+
+  @Column({ name: 'nin_verified_at', type: 'timestamptz', nullable: true })
+  ninVerifiedAt: Date | null;
+
   @Column({ name: 'password_hash' })
   passwordHash: string;
 

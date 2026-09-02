@@ -36,6 +36,7 @@ import {
 } from './payout-status-query.queue';
 import { ResolveRecipientDto } from './dto/resolve-recipient.dto';
 import { InitiatePayoutDto } from './dto/initiate-payout.dto';
+import { calculateTransferFeeMinor } from './fee.util';
 
 @Injectable()
 export class PayoutsService {
@@ -85,6 +86,28 @@ export class PayoutsService {
     };
   }
 
+  calculateFee(amountMinorRaw: string): {
+    amountMinor: string;
+    feeMinor: string;
+    totalMinor: string;
+  } {
+    let amountMinor: bigint;
+    try {
+      amountMinor = BigInt(amountMinorRaw);
+    } catch {
+      throw new BadRequestException('amountMinor must be a numeric string');
+    }
+    if (amountMinor <= 0n) {
+      throw new BadRequestException('amountMinor must be greater than zero');
+    }
+    const feeMinor = calculateTransferFeeMinor(amountMinor);
+    return {
+      amountMinor: amountMinor.toString(),
+      feeMinor: feeMinor.toString(),
+      totalMinor: (amountMinor + feeMinor).toString(),
+    };
+  }
+
   async initiatePayout(
     userId: string,
     dto: InitiatePayoutDto,
@@ -112,6 +135,8 @@ export class PayoutsService {
     if (amountMinor <= 0n) {
       throw new BadRequestException('amountMinor must be greater than zero');
     }
+    const feeMinor = calculateTransferFeeMinor(amountMinor);
+    const debitMinor = amountMinor + feeMinor;
 
     const wallet = await this.walletsService.findByUserAndCurrency(
       userId,
@@ -149,10 +174,13 @@ export class PayoutsService {
     const reference = `${walletName}-${randomBytes(10).toString('hex')}`;
 
     const transaction = await this.dataSource.transaction(async (manager) => {
+      // Debits amount + fee together — the fee is a platform charge on top
+      // of what actually reaches the recipient (see initiateTransfer below,
+      // which only ever sends `amountMinor` to VFD).
       const debited = await this.walletsService.debitForUpdate(
         manager,
         wallet.id,
-        amountMinor,
+        debitMinor,
       );
       return manager.save(
         Transaction,
@@ -164,6 +192,7 @@ export class PayoutsService {
           provider: provider.key,
           accountNumber: address.providerAccountNumber,
           amountMinor: amountMinor.toString(),
+          feeMinor: feeMinor.toString(),
           balanceAfterMinor: debited.balanceMinor,
           reference,
           beneficiaryId: beneficiary.id,
@@ -263,10 +292,15 @@ export class PayoutsService {
       ) {
         return;
       }
+      // Refund the full original debit — amount + fee, not amount alone
+      // (older rows predating the fee column have feeMinor null, treated as
+      // zero).
+      const refundMinor =
+        BigInt(transaction.amountMinor) + BigInt(transaction.feeMinor ?? '0');
       const wallet = await this.walletsService.creditForUpdate(
         manager,
         transaction.walletId as string,
-        BigInt(transaction.amountMinor),
+        refundMinor,
       );
       await manager.update(Transaction, transaction.id, {
         status: TransactionStatus.FAILED,
@@ -285,7 +319,7 @@ export class PayoutsService {
           status: TransactionStatus.SUCCESSFUL,
           provider: transaction.provider,
           accountNumber: transaction.accountNumber,
-          amountMinor: transaction.amountMinor,
+          amountMinor: refundMinor.toString(),
           balanceAfterMinor: wallet.balanceMinor,
           reference: `REV-${transaction.reference}`,
           beneficiaryId: transaction.beneficiaryId,

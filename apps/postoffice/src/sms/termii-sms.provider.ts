@@ -4,7 +4,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { AuthConfig } from '../config/configuration';
+import { PostofficeConfig } from '../config/configuration';
 import { SmsProvider } from './sms-provider.interface';
 
 interface TermiiSendResponse {
@@ -13,14 +13,14 @@ interface TermiiSendResponse {
 }
 
 // Termii "send message" API — https://developers.termii.com/messaging-api
-// We generate and hash our own OTP codes (see OtpService) and only use
-// Termii as a plain SMS transport, never its hosted OTP send/verify flow.
+// Plain SMS transport only — no OTP generation/verification here, that
+// stays wherever the message actually originates (e.g. apps/auth).
 @Injectable()
 export class TermiiSmsProvider implements SmsProvider {
   private readonly logger = new Logger(TermiiSmsProvider.name);
 
   constructor(
-    private readonly configService: ConfigService<AuthConfig, true>,
+    private readonly configService: ConfigService<PostofficeConfig, true>,
   ) {}
 
   async send(to: string, message: string): Promise<void> {
@@ -43,7 +43,7 @@ export class TermiiSmsProvider implements SmsProvider {
         from: senderId,
         sms: message,
         type: 'plain',
-        // "dnd" so transactional OTP codes still reach MTN numbers with
+        // "dnd" so transactional messages still reach MTN numbers with
         // Do-Not-Disturb active, unlike the "generic" promotional route.
         channel: 'dnd',
       }),

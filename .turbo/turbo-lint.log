@@ -1,0 +1,37 @@
+
+> apis@0.0.1 lint
+> eslint "{apps,libs}/**/*.ts" --fix
+
+
+/Users/awuyafrancis/Desktop/fiam app - go live /apis/apps/auth/src/config/env.validation.ts
+  47:3  error  Unsafe return of a value of type `any`  @typescript-eslint/no-unsafe-return
+
+/Users/awuyafrancis/Desktop/fiam app - go live /apis/apps/auth/src/main.ts
+  35:1  warning  Promises must be awaited, end with a call to .catch, end with a call to .then with a rejection handler or be explicitly marked as ignored with the `void` operator  @typescript-eslint/no-floating-promises
+
+/Users/awuyafrancis/Desktop/fiam app - go live /apis/apps/auth/src/tokens/current-user.decorator.ts
+  10:11  error  Unsafe assignment of an `any` value           @typescript-eslint/no-unsafe-assignment
+  11:20  error  Unsafe member access .user on an `any` value  @typescript-eslint/no-unsafe-member-access
+
+/Users/awuyafrancis/Desktop/fiam app - go live /apis/apps/payment/src/auth/current-user.decorator.ts
+  10:11  error  Unsafe assignment of an `any` value           @typescript-eslint/no-unsafe-assignment
+  11:20  error  Unsafe member access .user on an `any` value  @typescript-eslint/no-unsafe-member-access
+
+/Users/awuyafrancis/Desktop/fiam app - go live /apis/apps/payment/src/config/env.validation.ts
+  45:3  error  Unsafe return of a value of type `any`  @typescript-eslint/no-unsafe-return
+
+/Users/awuyafrancis/Desktop/fiam app - go live /apis/apps/payment/src/main.ts
+  57:1  warning  Promises must be awaited, end with a call to .catch, end with a call to .then with a rejection handler or be explicitly marked as ignored with the `void` operator  @typescript-eslint/no-floating-promises
+
+/Users/awuyafrancis/Desktop/fiam app - go live /apis/apps/postoffice/src/main.ts
+  20:1  warning  Promises must be awaited, end with a call to .catch, end with a call to .then with a rejection handler or be explicitly marked as ignored with the `void` operator  @typescript-eslint/no-floating-promises
+
+/Users/awuyafrancis/Desktop/fiam app - go live /apis/libs/common/src/config/validate-env.ts
+  7:18  error  Unsafe object destructuring of a property with an `any` value  @typescript-eslint/no-unsafe-assignment
+
+✖ 10 problems (7 errors, 3 warnings)
+
+npm ERR! Lifecycle script `lint` failed with error: 
+npm ERR! Error: command failed 
+npm ERR!   in workspace: apis@0.0.1 
+npm ERR!   at location: /Users/awuyafrancis/Desktop/fiam app - go live /apis 

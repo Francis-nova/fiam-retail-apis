@@ -12,17 +12,17 @@ import { CurrencyCode } from '@app/common';
 @Index(['userId', 'currency'], { unique: true })
 export class Wallet {
   @PrimaryGeneratedColumn('uuid')
-  id: string;
+  id!: string;
 
   // No FK — `users` lives in the separate fiam_auth database. Referential
   // integrity here is application-level only; the RabbitMQ provisioning
   // message's userId is the source of truth.
   @Index()
   @Column({ name: 'user_id', type: 'uuid' })
-  userId: string;
+  userId!: string;
 
   @Column({ type: 'enum', enum: CurrencyCode })
-  currency: CurrencyCode;
+  currency!: CurrencyCode;
 
   // Minor units (kobo for NGN) to avoid float precision issues. TypeORM
   // returns bigint columns as JS strings — keep it a string here and do all
@@ -33,11 +33,11 @@ export class Wallet {
     type: 'bigint',
     default: 0,
   })
-  balanceMinor: string;
+  balanceMinor!: string;
 
   @CreateDateColumn({ name: 'created_at' })
-  createdAt: Date;
+  createdAt!: Date;
 
   @UpdateDateColumn({ name: 'updated_at' })
-  updatedAt: Date;
+  updatedAt!: Date;
 }

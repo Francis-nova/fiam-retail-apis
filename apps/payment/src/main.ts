@@ -1,5 +1,5 @@
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
+import { Logger, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { MicroserviceOptions, Transport } from '@nestjs/microservices';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
@@ -52,6 +52,11 @@ async function bootstrap() {
   });
 
   await app.startAllMicroservices();
-  await app.listen(configService.get('port', { infer: true }));
+  const port = configService.get('port', { infer: true });
+  await app.listen(port);
+
+  const logger = new Logger('Bootstrap');
+  logger.log(`Payment API running on port ${port}`);
+  logger.log(`Swagger docs available at ${await app.getUrl()}/docs`);
 }
 bootstrap();

@@ -91,11 +91,4 @@ export class OtpService {
     await this.otpRepo.update(otp.id, { consumedAt: new Date() });
     return true;
   }
-
-  // Called when a just-generated code failed to actually reach the user
-  // (SMS/provider send threw) — clears it so the resend cooldown doesn't
-  // lock them out of retrying for a code they never received.
-  async purgeUnconsumed(userId: string, purpose: OtpPurpose): Promise<void> {
-    await this.otpRepo.delete({ userId, purpose, consumedAt: IsNull() });
-  }
 }

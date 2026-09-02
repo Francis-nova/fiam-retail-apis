@@ -9,7 +9,6 @@ import { OtpModule } from '../otp/otp.module';
 import { SessionsModule } from '../sessions/sessions.module';
 import { TokensModule } from '../tokens/tokens.module';
 import { DevicesModule } from '../devices/devices.module';
-import { SmsModule } from '../sms/sms.module';
 import { KycModule } from '../kyc/kyc.module';
 import { MessagingModule } from '../messaging/messaging.module';
 
@@ -22,7 +21,6 @@ import { MessagingModule } from '../messaging/messaging.module';
     SessionsModule,
     TokensModule,
     DevicesModule,
-    SmsModule,
     KycModule,
     MessagingModule,
   ],

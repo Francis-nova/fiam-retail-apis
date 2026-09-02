@@ -18,8 +18,6 @@ import { OtpPurpose } from '../otp/entities/otp.entity';
 import { SessionsService } from '../sessions/sessions.service';
 import { TokensService, TokenPair } from '../tokens/tokens.service';
 import { DevicesService } from '../devices/devices.service';
-import { SMS_PROVIDER } from '../sms/sms-provider.interface';
-import type { SmsProvider } from '../sms/sms-provider.interface';
 import { BVN_PROVIDER } from '../kyc/bvn-provider.interface';
 import type { BvnProvider } from '../kyc/bvn-provider.interface';
 import { normalizeDobToIso } from '../kyc/dob.util';
@@ -28,6 +26,7 @@ import { RegisterDto } from './dto/register.dto';
 import { PendingLogin } from './entities/pending-login.entity';
 import { generateRefreshToken } from '../tokens/token.util';
 import { PaymentProvisioningPublisher } from '../messaging/payment-provisioning.publisher';
+import { NotificationPublisher } from '../messaging/notification.publisher';
 
 export interface RequestMeta {
   deviceId?: string;
@@ -80,9 +79,9 @@ export class AuthService {
     private readonly devicesService: DevicesService,
     @InjectRepository(PendingLogin)
     private readonly pendingLoginsRepo: Repository<PendingLogin>,
-    @Inject(SMS_PROVIDER) private readonly smsProvider: SmsProvider,
     @Inject(BVN_PROVIDER) private readonly bvnProvider: BvnProvider,
     private readonly paymentProvisioningPublisher: PaymentProvisioningPublisher,
+    private readonly notificationPublisher: NotificationPublisher,
   ) {}
 
   async register(
@@ -456,20 +455,13 @@ export class AuthService {
       userId,
       OtpPurpose.PHONE_VERIFICATION,
     );
-    try {
-      await this.smsProvider.send(
-        phone,
-        `Your Fiam verification code is ${code}. It expires in 5 minutes.`,
-      );
-    } catch (err) {
-      // The code never reached the user — don't let it sit inside the
-      // resend cooldown window and block their next attempt.
-      await this.otpService.purgeUnconsumed(
-        userId,
-        OtpPurpose.PHONE_VERIFICATION,
-      );
-      throw err;
-    }
+    // Delivery is now postoffice's job (queued over RabbitMQ) — this only
+    // fails if the broker itself is unreachable, not if the SMS bounces, so
+    // there's no send-result left here to purge the OTP over on failure.
+    this.notificationPublisher.requestSms(
+      phone,
+      `Your Fiam verification code is ${code}. It expires in 5 minutes.`,
+    );
     return { phone };
   }
 
@@ -482,18 +474,10 @@ export class AuthService {
       userId,
       OtpPurpose.PHONE_VERIFICATION,
     );
-    try {
-      await this.smsProvider.send(
-        user.phone,
-        `Your Fiam verification code is ${code}. It expires in 5 minutes.`,
-      );
-    } catch (err) {
-      await this.otpService.purgeUnconsumed(
-        userId,
-        OtpPurpose.PHONE_VERIFICATION,
-      );
-      throw err;
-    }
+    this.notificationPublisher.requestSms(
+      user.phone,
+      `Your Fiam verification code is ${code}. It expires in 5 minutes.`,
+    );
   }
 
   async verifyPhoneOtp(
