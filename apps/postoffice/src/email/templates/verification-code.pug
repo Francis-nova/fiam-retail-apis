@@ -1,0 +1,10 @@
+extends layout
+include mixins
+
+block content
+  +heading(heading)
+  +greeting(firstName)
+  p(style="margin:0 0 8px 0; font-size:15px; line-height:1.6; color:#000909;")= intro
+  +codeBox(code)
+  p(style="margin:0; font-size:13px; line-height:1.6; color:#7F7F7F;")
+    | This code expires in #{expiryMinutes} minutes. If you didn't request this, you can safely ignore this email.

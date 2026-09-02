@@ -26,7 +26,9 @@
       "entryFile": "main",
       "sourceRoot": "apps/postoffice/src",
       "compilerOptions": {
-        "tsConfigPath": "apps/postoffice/tsconfig.app.json"
+        "tsConfigPath": "apps/postoffice/tsconfig.app.json",
+        "assets": ["email/templates/**/*.pug"],
+        "watchAssets": true
       }
     },
     "payment": {

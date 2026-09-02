@@ -1,0 +1,13 @@
+extends layout
+include mixins
+
+block content
+  +heading('Wallet funded')
+  +greeting(firstName)
+  p(style="margin:0 0 8px 0; font-size:15px; line-height:1.6; color:#000909;")
+    | Your wallet has just been credited.
+  +amount('+' + amount, 'credit')
+  +detailsCard()
+    +row('Reference', reference)
+    +row('New balance', balance)
+    +row('Date', occurredAt)

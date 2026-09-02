@@ -1,0 +1,18 @@
+extends layout
+include mixins
+
+block content
+  - var isCredit = direction === 'credit'
+  - var badgeLabel = isCredit ? 'Credit' : 'Debit'
+  - var title = isCredit ? 'Money received' : 'Money sent'
+  - var signedAmount = (isCredit ? '+' : '-') + amount
+  - var counterpartyLabel = isCredit ? 'From' : 'To'
+  +badge(badgeLabel, direction)
+  +heading(title)
+  +greeting(firstName)
+  +amount(signedAmount, direction)
+  +detailsCard()
+    +row(counterpartyLabel, counterparty)
+    +row('Reference', reference)
+    +row('Status', status)
+    +row('Date', occurredAt)

@@ -5,6 +5,7 @@ import configuration from './config/configuration';
 import { validate } from './config/env.validation';
 import { MessagingModule } from './messaging/messaging.module';
 import { SmsModule } from './sms/sms.module';
+import { EmailModule } from './email/email.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { SmsModule } from './sms/sms.module';
       validate,
     }),
     SmsModule,
+    EmailModule,
     MessagingModule,
   ],
   controllers: [AppController],

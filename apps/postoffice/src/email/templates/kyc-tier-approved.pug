@@ -1,0 +1,10 @@
+extends layout
+include mixins
+
+block content
+  +heading('You are verified')
+  +greeting(firstName)
+  p(style="margin:0 0 16px 0; font-size:15px; line-height:1.6; color:#000909;")
+    | Congratulations — your account has been upgraded to #[strong Tier #{tier}].
+  p(style="margin:0; font-size:14px; line-height:1.6; color:#7F7F7F;")
+    | Higher transaction and wallet limits are now available on your account.
