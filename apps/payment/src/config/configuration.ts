@@ -3,6 +3,7 @@ import { CurrencyCode } from '@app/common';
 export interface PaymentConfig {
   env: string;
   port: number;
+  corsOrigin: string | string[];
   database: {
     url: string;
   };
@@ -45,6 +46,7 @@ export interface PaymentConfig {
 export default (): PaymentConfig => ({
   env: process.env.NODE_ENV ?? 'development',
   port: parseInt(process.env.PAYMENT_PORT ?? '7003', 10),
+  corsOrigin: process.env.CORS_ORIGIN?.split(',') || '*',
   database: {
     url: process.env.PAYMENT_DATABASE_URL as string,
   },

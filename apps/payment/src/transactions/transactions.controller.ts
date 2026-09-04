@@ -20,9 +20,9 @@ export interface TransactionResponse {
   type: string;
   status: string;
   currency: string;
-  amountMinor: string;
-  feeMinor: string | null;
-  balanceAfterMinor: string | null;
+  amount: string;
+  fee: string | null;
+  balanceAfter: string | null;
   reference: string;
   provider: string;
   narration: string | null;
@@ -66,9 +66,9 @@ function toResponse(transaction: Transaction): TransactionResponse {
     type: transaction.type,
     status: transaction.status,
     currency: transaction.currency,
-    amountMinor: transaction.amountMinor,
-    feeMinor: transaction.feeMinor,
-    balanceAfterMinor: transaction.balanceAfterMinor,
+    amount: transaction.amount,
+    fee: transaction.fee,
+    balanceAfter: transaction.balanceAfter,
     reference: transaction.reference,
     provider: transaction.provider,
     narration: transaction.narration,

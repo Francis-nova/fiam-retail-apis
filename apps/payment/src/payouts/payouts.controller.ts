@@ -26,8 +26,8 @@ export class PayoutsController {
   @Get('fee')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  calculateFee(@Query('amountMinor') amountMinor: string) {
-    return this.payoutsService.calculateFee(amountMinor);
+  calculateFee(@Query('amount') amount: string) {
+    return this.payoutsService.calculateFee(amount);
   }
 
   @Post()

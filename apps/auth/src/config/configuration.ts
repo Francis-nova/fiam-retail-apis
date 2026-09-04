@@ -4,6 +4,7 @@ export interface AuthConfig {
   database: {
     url: string;
   };
+  corsOrigin: string | string[];
   jwt: {
     accessSecret: string;
     accessTtl: string;
@@ -43,6 +44,7 @@ export interface AuthConfig {
 export default (): AuthConfig => ({
   env: process.env.NODE_ENV ?? 'development',
   port: parseInt(process.env.AUTH_PORT ?? '7001', 10),
+  corsOrigin: process.env.CORS_ORIGIN?.split(',') || '*',
   database: {
     url: process.env.AUTH_DATABASE_URL as string,
   },

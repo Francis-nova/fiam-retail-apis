@@ -8,7 +8,7 @@ import type { AuthenticatedUser } from '../auth/current-user.decorator';
 
 export interface WalletSummary {
   currency: string;
-  balanceMinor: string;
+  balance: string;
   provider: string | null;
   accountNumber: string | null;
   accountName: string | null;
@@ -39,7 +39,7 @@ export class WalletsController {
         );
         return {
           currency: wallet.currency,
-          balanceMinor: wallet.balanceMinor,
+          balance: wallet.balance,
           provider: address?.provider ?? null,
           accountNumber: address?.providerAccountNumber ?? null,
           accountName: address?.providerAccountName ?? null,

@@ -1,3 +1,4 @@
+import Decimal from 'decimal.js';
 import { PaymentProviderKey } from '../wallets/entities/address.entity';
 
 export interface ProviderAccountApplicant {
@@ -51,7 +52,7 @@ export interface ProviderInitiateTransferInput {
   to: ProviderTransferRecipient;
   bankCode: string;
   transferType: ProviderTransferType;
-  amountMinor: bigint;
+  amount: Decimal;
   reference: string;
   narration: string;
 }

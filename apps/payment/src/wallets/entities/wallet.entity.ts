@@ -24,16 +24,18 @@ export class Wallet {
   @Column({ type: 'enum', enum: CurrencyCode })
   currency!: CurrencyCode;
 
-  // Minor units (kobo for NGN) to avoid float precision issues. TypeORM
-  // returns bigint columns as JS strings — keep it a string here and do all
-  // arithmetic via explicit BigInt() conversions in the service layer, never
-  // via +/- on the string itself.
+  // Naira decimal. Postgres numeric is exact, but JS Number/native +/- are
+  // not — TypeORM returns numeric columns as JS strings, and all arithmetic
+  // must go through decimal.js (`new Decimal(wallet.balance)`) in the
+  // service layer, never raw string/Number math.
   @Column({
-    name: 'balance_minor',
-    type: 'bigint',
+    name: 'balance',
+    type: 'numeric',
+    precision: 15,
+    scale: 4,
     default: 0,
   })
-  balanceMinor!: string;
+  balance!: string;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;

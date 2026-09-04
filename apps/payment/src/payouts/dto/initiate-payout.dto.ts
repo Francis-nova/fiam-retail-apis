@@ -1,5 +1,5 @@
 import {
-  IsNumberString,
+  IsDecimal,
   IsOptional,
   IsString,
   IsUUID,
@@ -25,10 +25,10 @@ export class InitiatePayoutDto {
   @MinLength(1)
   accountNumber?: string;
 
-  // Minor units (kobo), string to avoid float precision issues — same
-  // convention as Wallet.balanceMinor/Transaction.amountMinor.
-  @IsNumberString()
-  amountMinor: string;
+  // Naira decimal, string to avoid float precision issues — same convention
+  // as Wallet.balance/Transaction.amount.
+  @IsDecimal({ decimal_digits: '0,4' })
+  amount: string;
 
   @IsOptional()
   @IsString()

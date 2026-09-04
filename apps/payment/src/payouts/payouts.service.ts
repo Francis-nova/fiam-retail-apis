@@ -11,6 +11,7 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Queue } from 'bullmq';
 import { DataSource, Repository } from 'typeorm';
+import Decimal from 'decimal.js';
 import { CurrencyCode } from '@app/common';
 import { PaymentConfig } from '../config/configuration';
 import { WalletsService } from '../wallets/wallets.service';
@@ -36,7 +37,7 @@ import {
 } from './payout-status-query.queue';
 import { ResolveRecipientDto } from './dto/resolve-recipient.dto';
 import { InitiatePayoutDto } from './dto/initiate-payout.dto';
-import { calculateTransferFeeMinor } from './fee.util';
+import { calculateTransferFee } from './fee.util';
 
 @Injectable()
 export class PayoutsService {
@@ -86,25 +87,25 @@ export class PayoutsService {
     };
   }
 
-  calculateFee(amountMinorRaw: string): {
-    amountMinor: string;
-    feeMinor: string;
-    totalMinor: string;
+  calculateFee(amountRaw: string): {
+    amount: string;
+    fee: string;
+    total: string;
   } {
-    let amountMinor: bigint;
+    let amount: Decimal;
     try {
-      amountMinor = BigInt(amountMinorRaw);
+      amount = new Decimal(amountRaw);
     } catch {
-      throw new BadRequestException('amountMinor must be a numeric string');
+      throw new BadRequestException('amount must be a numeric string');
     }
-    if (amountMinor <= 0n) {
-      throw new BadRequestException('amountMinor must be greater than zero');
+    if (amount.lessThanOrEqualTo(0)) {
+      throw new BadRequestException('amount must be greater than zero');
     }
-    const feeMinor = calculateTransferFeeMinor(amountMinor);
+    const fee = calculateTransferFee(amount);
     return {
-      amountMinor: amountMinor.toString(),
-      feeMinor: feeMinor.toString(),
-      totalMinor: (amountMinor + feeMinor).toString(),
+      amount: amount.toFixed(4),
+      fee: fee.toFixed(4),
+      total: amount.plus(fee).toFixed(4),
     };
   }
 
@@ -131,12 +132,12 @@ export class PayoutsService {
       );
     }
 
-    const amountMinor = BigInt(dto.amountMinor);
-    if (amountMinor <= 0n) {
-      throw new BadRequestException('amountMinor must be greater than zero');
+    const amount = new Decimal(dto.amount);
+    if (amount.lessThanOrEqualTo(0)) {
+      throw new BadRequestException('amount must be greater than zero');
     }
-    const feeMinor = calculateTransferFeeMinor(amountMinor);
-    const debitMinor = amountMinor + feeMinor;
+    const fee = calculateTransferFee(amount);
+    const debit = amount.plus(fee);
 
     const wallet = await this.walletsService.findByUserAndCurrency(
       userId,
@@ -176,11 +177,11 @@ export class PayoutsService {
     const transaction = await this.dataSource.transaction(async (manager) => {
       // Debits amount + fee together — the fee is a platform charge on top
       // of what actually reaches the recipient (see initiateTransfer below,
-      // which only ever sends `amountMinor` to VFD).
+      // which only ever sends `amount` to VFD).
       const debited = await this.walletsService.debitForUpdate(
         manager,
         wallet.id,
-        debitMinor,
+        debit,
       );
       return manager.save(
         Transaction,
@@ -191,9 +192,9 @@ export class PayoutsService {
           status: TransactionStatus.PROCESSING,
           provider: provider.key,
           accountNumber: address.providerAccountNumber,
-          amountMinor: amountMinor.toString(),
-          feeMinor: feeMinor.toString(),
-          balanceAfterMinor: debited.balanceMinor,
+          amount: amount.toFixed(4),
+          fee: fee.toFixed(4),
+          balanceAfter: debited.balance,
           reference,
           beneficiaryId: beneficiary.id,
           narration: dto.narration ?? null,
@@ -206,7 +207,7 @@ export class PayoutsService {
       to: recipient,
       bankCode,
       transferType,
-      amountMinor,
+      amount,
       reference,
       narration: dto.narration ?? 'Payout',
     });
@@ -293,21 +294,22 @@ export class PayoutsService {
         return;
       }
       // Refund the full original debit — amount + fee, not amount alone
-      // (older rows predating the fee column have feeMinor null, treated as
+      // (older rows predating the fee column have fee null, treated as
       // zero).
-      const refundMinor =
-        BigInt(transaction.amountMinor) + BigInt(transaction.feeMinor ?? '0');
+      const refund = new Decimal(transaction.amount).plus(
+        new Decimal(transaction.fee ?? '0'),
+      );
       const wallet = await this.walletsService.creditForUpdate(
         manager,
         transaction.walletId as string,
-        refundMinor,
+        refund,
       );
       await manager.update(Transaction, transaction.id, {
         status: TransactionStatus.FAILED,
         verifiedAt: new Date(),
       });
       // A separate ledger row for the reversal, rather than mutating the
-      // original DEBIT's balanceAfterMinor — that field is an accurate
+      // original DEBIT's balanceAfter — that field is an accurate
       // historical snapshot of the balance right after the debit was
       // applied; the reversal is its own distinct wallet-affecting event.
       await manager.save(
@@ -319,8 +321,8 @@ export class PayoutsService {
           status: TransactionStatus.SUCCESSFUL,
           provider: transaction.provider,
           accountNumber: transaction.accountNumber,
-          amountMinor: refundMinor.toString(),
-          balanceAfterMinor: wallet.balanceMinor,
+          amount: refund.toFixed(4),
+          balanceAfter: wallet.balance,
           reference: `REV-${transaction.reference}`,
           beneficiaryId: transaction.beneficiaryId,
           narration: `Reversal for failed payout ${transaction.reference}`,

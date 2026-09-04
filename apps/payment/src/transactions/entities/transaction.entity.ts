@@ -71,15 +71,21 @@ export class Transaction {
   @Column({ name: 'account_number', type: 'varchar' })
   accountNumber: string;
 
-  @Column({ name: 'amount_minor', type: 'bigint' })
-  amountMinor: string;
+  @Column({ name: 'amount', type: 'numeric', precision: 15, scale: 4 })
+  amount: string;
 
-  // The transfer fee charged on top of amountMinor for a DEBIT (payout) —
-  // wallet's actual debit is amountMinor + feeMinor, while amountMinor alone
-  // is what reaches the recipient. Null for CREDIT rows and for any DEBIT
+  // The transfer fee charged on top of amount for a DEBIT (payout) —
+  // wallet's actual debit is amount + fee, while amount alone is what
+  // reaches the recipient. Null for CREDIT rows and for any DEBIT
   // predating this column. See payouts/fee.util.ts.
-  @Column({ name: 'fee_minor', type: 'bigint', nullable: true })
-  feeMinor: string | null;
+  @Column({
+    name: 'fee',
+    type: 'numeric',
+    precision: 15,
+    scale: 4,
+    nullable: true,
+  })
+  fee: string | null;
 
   // Set for DEBIT (payout) transactions — links to the saved recipient this
   // payout went to. Null for CREDIT (payin) transactions, which have no
@@ -97,8 +103,14 @@ export class Transaction {
 
   // Set only once the worker has actually applied the credit/debit —
   // null for PENDING/PROCESSING/FAILED/UNMATCHED.
-  @Column({ name: 'balance_after_minor', type: 'bigint', nullable: true })
-  balanceAfterMinor: string | null;
+  @Column({
+    name: 'balance_after',
+    type: 'numeric',
+    precision: 15,
+    scale: 4,
+    nullable: true,
+  })
+  balanceAfter: string | null;
 
   // Provider's own reference for this transaction — this is the dedupe
   // key (see the unique index above), since a provider can redeliver the

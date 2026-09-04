@@ -16,7 +16,11 @@ async function bootstrap() {
   // web target and any future browser-based client need this — open in dev,
   // tightened once a real web origin exists in production.
   if (configService.get('env', { infer: true }) !== 'production') {
-    app.enableCors();
+    app.enableCors({
+      origin: configService.get('corsOrigin', { infer: true }),
+      methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+      credentials: true,
+    });
   }
 
   const swaggerConfig = new DocumentBuilder()
@@ -31,7 +35,7 @@ async function bootstrap() {
   SwaggerModule.setup('docs', app, document);
 
   const port = configService.get('port', { infer: true });
-  await app.listen(port);
+  await app.listen(port, '0.0.0.0');
 
   const logger = new Logger('Bootstrap');
   logger.log(`Auth API running on port ${port}`);

@@ -18,7 +18,11 @@ async function bootstrap() {
   const configService =
     app.get<ConfigService<PaymentConfig, true>>(ConfigService);
   if (configService.get('env', { infer: true }) !== 'production') {
-    app.enableCors();
+    app.enableCors({
+      origin: configService.get('corsOrigin', { infer: true }),
+      methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+      credentials: true,
+    });
   }
 
   const swaggerConfig = new DocumentBuilder()
@@ -53,7 +57,7 @@ async function bootstrap() {
 
   await app.startAllMicroservices();
   const port = configService.get('port', { infer: true });
-  await app.listen(port);
+  await app.listen(port, '0.0.0.0');
 
   const logger = new Logger('Bootstrap');
   logger.log(`Payment API running on port ${port}`);

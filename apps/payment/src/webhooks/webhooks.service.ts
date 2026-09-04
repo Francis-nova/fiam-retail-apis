@@ -1,4 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
+import Decimal from 'decimal.js';
 import { CurrencyCode } from '@app/common';
 import { PaymentProviderKey } from '../wallets/entities/address.entity';
 import { TransactionsService } from '../transactions/transactions.service';
@@ -7,11 +8,12 @@ import type { PaymentProviderRegistry } from '../providers/payment-provider.regi
 import { VfdInwardCreditWebhookDto } from './dto/vfd-inward-credit-webhook.dto';
 
 // VFD's docs show `"amount": "1000"` with no explicit unit stated. Assumed
-// naira (so *100 to kobo) here — CONFIRM against a real VFD sandbox inward
-// transfer before relying on this beyond dev/test (see verification plan).
-function parseAmountMinor(rawAmount: string): bigint {
-  const naira = Number.parseFloat(rawAmount);
-  return BigInt(Math.round(naira * 100));
+// naira here — CONFIRM against a real VFD sandbox inward transfer before
+// relying on this beyond dev/test (see verification plan). Our own internal
+// representation is naira decimal too now, so no unit conversion is needed,
+// just parsing.
+function parseAmount(rawAmount: string): Decimal {
+  return new Decimal(rawAmount);
 }
 
 @Injectable()
@@ -32,7 +34,7 @@ export class WebhooksService {
     // that itself errors (network hiccup, VFD unavailable) fails open —
     // the shared secret already gates this endpoint, and our own inability
     // to reach VFD shouldn't block a legitimate credit.
-    let amountMinor = parseAmountMinor(dto.amount);
+    let amount = parseAmount(dto.amount);
     try {
       const provider = this.registry.getProviderForCurrency(CurrencyCode.NGN);
       const requery = await provider.queryTransferStatus(dto.reference);
@@ -51,7 +53,7 @@ export class WebhooksService {
       if (requeriedAmount) {
         // Prefer VFD's own authoritative figure over the webhook's claimed
         // amount when the requery succeeded and returned one.
-        amountMinor = parseAmountMinor(requeriedAmount);
+        amount = parseAmount(requeriedAmount);
       }
     } catch (err) {
       this.logger.warn(
@@ -63,7 +65,7 @@ export class WebhooksService {
       provider: PaymentProviderKey.VFD,
       currency: CurrencyCode.NGN, // VFD is NGN-only — see PaymentProviderRegistryService
       accountNumber: dto.account_number,
-      amountMinor,
+      amount,
       reference: dto.reference,
       externalId: dto.session_id ?? null,
       narration: dto.originator_narration ?? null,

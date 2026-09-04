@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { EntityManager, Repository } from 'typeorm';
+import Decimal from 'decimal.js';
 import { CurrencyCode } from '@app/common';
 import { Wallet } from './entities/wallet.entity';
 
@@ -42,7 +43,7 @@ export class WalletsService {
     }
     try {
       return await this.walletsRepo.save(
-        this.walletsRepo.create({ userId, currency, balanceMinor: '0' }),
+        this.walletsRepo.create({ userId, currency, balance: '0' }),
       );
     } catch {
       // Lost a race with a concurrent create (UQ_wallets_user_currency) —
@@ -57,11 +58,11 @@ export class WalletsService {
 
   // Must be called inside an active transaction on `manager` — locks the row
   // so concurrent credits/debits on the same wallet serialize instead of
-  // racing on a read-modify-write of balanceMinor.
+  // racing on a read-modify-write of balance.
   async creditForUpdate(
     manager: EntityManager,
     walletId: string,
-    amountMinor: bigint,
+    amount: Decimal,
   ): Promise<Wallet> {
     const wallet = await manager
       .createQueryBuilder(Wallet, 'wallet')
@@ -71,25 +72,25 @@ export class WalletsService {
     if (!wallet) {
       throw new NotFoundException('Wallet not found');
     }
-    const newBalance = BigInt(wallet.balanceMinor) + amountMinor;
+    const newBalance = new Decimal(wallet.balance).plus(amount);
     await manager.update(Wallet, walletId, {
-      balanceMinor: newBalance.toString(),
+      balance: newBalance.toFixed(4),
     });
-    wallet.balanceMinor = newBalance.toString();
+    wallet.balance = newBalance.toFixed(4);
     return wallet;
   }
 
   // Must be called inside an active transaction on `manager`, same locking
   // discipline as creditForUpdate — this is what lets a payout's balance
   // hold and a concurrent payin's credit serialize correctly instead of
-  // racing on balanceMinor. Throws if the wallet can't cover the debit;
+  // racing on balance. Throws if the wallet can't cover the debit;
   // callers must not have called the provider's transfer API yet at this
   // point (see PayoutsService.initiatePayout — the debit happens before the
   // network call, so a rejected debit never needs a provider-side reversal).
   async debitForUpdate(
     manager: EntityManager,
     walletId: string,
-    amountMinor: bigint,
+    amount: Decimal,
   ): Promise<Wallet> {
     const wallet = await manager
       .createQueryBuilder(Wallet, 'wallet')
@@ -99,15 +100,15 @@ export class WalletsService {
     if (!wallet) {
       throw new NotFoundException('Wallet not found');
     }
-    const currentBalance = BigInt(wallet.balanceMinor);
-    if (currentBalance < amountMinor) {
+    const currentBalance = new Decimal(wallet.balance);
+    if (currentBalance.lessThan(amount)) {
       throw new BadRequestException('Insufficient balance');
     }
-    const newBalance = currentBalance - amountMinor;
+    const newBalance = currentBalance.minus(amount);
     await manager.update(Wallet, walletId, {
-      balanceMinor: newBalance.toString(),
+      balance: newBalance.toFixed(4),
     });
-    wallet.balanceMinor = newBalance.toString();
+    wallet.balance = newBalance.toFixed(4);
     return wallet;
   }
 }

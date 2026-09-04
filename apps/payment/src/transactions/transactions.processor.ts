@@ -3,6 +3,7 @@ import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Job } from 'bullmq';
 import { DataSource, Repository } from 'typeorm';
+import Decimal from 'decimal.js';
 import { WalletsService } from '../wallets/wallets.service';
 import {
   Transaction,
@@ -66,11 +67,11 @@ export class TransactionsProcessor extends WorkerHost {
       const wallet = await this.walletsService.creditForUpdate(
         manager,
         transaction.walletId as string,
-        BigInt(transaction.amountMinor),
+        new Decimal(transaction.amount),
       );
       await manager.update(Transaction, transactionId, {
         status: TransactionStatus.SUCCESSFUL,
-        balanceAfterMinor: wallet.balanceMinor,
+        balanceAfter: wallet.balance,
         verifiedAt: new Date(),
       });
     });

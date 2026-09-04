@@ -307,9 +307,10 @@ export class VfdPaymentProvider implements PaymentProvider {
 
     // VFD's docs show amount as a plain numeric string with no stated unit
     // — same ambiguity as the inward-credit webhook (webhooks.service.ts's
-    // parseAmountMinor); assumed naira, unconfirmed against a real sandbox
-    // transfer.
-    const amountNaira = (Number(input.amountMinor) / 100).toString();
+    // parseAmount); assumed naira, unconfirmed against a real sandbox
+    // transfer. Our own internal representation is naira decimal too now,
+    // so this is a straight format, not a unit conversion.
+    const amountNaira = input.amount.toFixed(2);
     const signature = sha512(
       `${input.from.accountNumber}${input.to.accountNumber}`,
     );

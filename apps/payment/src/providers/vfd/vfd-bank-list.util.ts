@@ -3,7 +3,7 @@ import { ProviderBank } from '../payment-provider.interface';
 // VFD's docs list the /bank endpoint but, unlike every other Transfer
 // Services endpoint, don't show a sample response body — this normalizer is
 // deliberately defensive about the shape until confirmed against a real
-// sandbox call (same "unconfirmed" caveat as parseAmountMinor in
+// sandbox call (same "unconfirmed" caveat as parseAmount in
 // webhooks.service.ts). Handles either an array of {code|bankCode, name|
 // bankName} objects, or a plain {code: name} dictionary; malformed entries
 // are dropped rather than throwing, so a partially-odd response still

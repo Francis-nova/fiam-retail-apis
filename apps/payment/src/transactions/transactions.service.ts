@@ -3,6 +3,7 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Queue } from 'bullmq';
 import { In, Repository } from 'typeorm';
+import Decimal from 'decimal.js';
 import { CurrencyCode } from '@app/common';
 import { AddressService } from '../wallets/address.service';
 import { WalletsService } from '../wallets/wallets.service';
@@ -22,7 +23,7 @@ export interface RecordPayinInput {
   provider: PaymentProviderKey;
   currency: CurrencyCode;
   accountNumber: string;
-  amountMinor: bigint;
+  amount: Decimal;
   reference: string;
   externalId?: string | null;
   narration?: string | null;
@@ -71,7 +72,7 @@ export class TransactionsService {
           : TransactionStatus.UNMATCHED,
         provider: input.provider,
         accountNumber: input.accountNumber,
-        amountMinor: input.amountMinor.toString(),
+        amount: input.amount.toFixed(4),
         reference: input.reference,
         externalId: input.externalId ?? null,
         narration: input.narration ?? null,
