@@ -54,4 +54,4 @@ async function bootstrap() {
     `Listening for notifications on queue "${POSTOFFICE_NOTIFICATION_QUEUE}"`,
   );
 }
-bootstrap();
+void bootstrap();

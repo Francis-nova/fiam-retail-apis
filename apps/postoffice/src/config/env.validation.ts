@@ -1,7 +1,23 @@
 import * as Joi from 'joi';
 import { validateEnv } from '@app/common';
 
-export const envSchema = Joi.object({
+interface EnvVars {
+  [key: string]: unknown;
+  NODE_ENV: 'development' | 'test' | 'production';
+  POSTOFFICE_PORT: number;
+  RABBITMQ_URL: string;
+  SMS_PROVIDER: 'termii';
+  TERMII_API_KEY: string;
+  TERMII_SENDER_ID: string;
+  TERMII_BASE_URL: string;
+  EMAIL_PROVIDER: 'zeptomail';
+  EMAIL_FROM_ADDRESS: string;
+  EMAIL_FROM_NAME: string;
+  ZEPTOMAIL_TOKEN: string;
+  ZEPTOMAIL_BASE_URL: string;
+}
+
+export const envSchema = Joi.object<EnvVars>({
   NODE_ENV: Joi.string()
     .valid('development', 'test', 'production')
     .default('development'),

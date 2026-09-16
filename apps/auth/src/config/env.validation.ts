@@ -1,7 +1,33 @@
 import * as Joi from 'joi';
 import { validateEnv } from '@app/common';
 
-export const envSchema = Joi.object({
+interface EnvVars {
+  [key: string]: unknown;
+  NODE_ENV: 'development' | 'test' | 'production';
+  AUTH_PORT: number;
+  AUTH_DATABASE_URL: string;
+  JWT_ACCESS_SECRET: string;
+  JWT_ACCESS_TTL: string;
+  JWT_REFRESH_SECRET: string;
+  JWT_REFRESH_TTL: string;
+  OTP_TTL_SECONDS: number;
+  OTP_LENGTH: number;
+  OTP_MAX_ATTEMPTS: number;
+  OTP_RESEND_COOLDOWN_SECONDS: number;
+  KYC_PROVIDER: 'qoreid';
+  QOREID_CLIENT_ID: string;
+  QOREID_SECRET: string;
+  QOREID_BASE_URL: string;
+  MINIO_ENDPOINT: string;
+  MINIO_PORT: number;
+  MINIO_USE_SSL: 'true' | 'false';
+  MINIO_ACCESS_KEY: string;
+  MINIO_SECRET_KEY: string;
+  MINIO_BUCKET: string;
+  RABBITMQ_URL: string;
+}
+
+export const envSchema = Joi.object<EnvVars>({
   NODE_ENV: Joi.string()
     .valid('development', 'test', 'production')
     .default('development'),

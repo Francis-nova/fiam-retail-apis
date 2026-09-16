@@ -63,4 +63,4 @@ async function bootstrap() {
   logger.log(`Payment API running on port ${port}`);
   logger.log(`Swagger docs available at ${await app.getUrl()}/docs`);
 }
-bootstrap();
+void bootstrap();

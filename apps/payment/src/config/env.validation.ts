@@ -1,7 +1,25 @@
 import * as Joi from 'joi';
 import { validateEnv } from '@app/common';
 
-export const envSchema = Joi.object({
+interface EnvVars {
+  [key: string]: unknown;
+  NODE_ENV: 'development' | 'test' | 'production';
+  PAYMENT_PORT: number;
+  PAYMENT_DATABASE_URL: string;
+  RABBITMQ_URL: string;
+  REDIS_URL: string;
+  JWT_ACCESS_SECRET: string;
+  PAYMENT_PROVIDER_NGN: 'vfd';
+  VFD_AUTH_BASE_URL: string;
+  VFD_WALLET_BASE_URL: string;
+  VFD_CONSUMER_KEY: string;
+  VFD_CONSUMER_SECRET: string;
+  VFD_WEBHOOK_SECRET: string;
+  VFD_BANK_CODE: string;
+  VFD_WALLET_NAME: string;
+}
+
+export const envSchema = Joi.object<EnvVars>({
   NODE_ENV: Joi.string()
     .valid('development', 'test', 'production')
     .default('development'),
