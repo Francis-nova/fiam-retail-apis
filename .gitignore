@@ -3,3 +3,6 @@ dist/
 coverage/
 .env
 *.tsbuildinfo
+
+docker/stack.env
+docker/traefik.env

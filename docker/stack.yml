@@ -1,0 +1,203 @@
+# The redeployable app stack: Postgres, Redis, RabbitMQ, MinIO, and the
+# three Nest services (auth, payment, postoffice), all sharing one built
+# image (see ../Dockerfile) that's differentiated per service only by
+# `command:`.
+#
+# Requires the `edge` overlay network from traefik-stack.yml to already
+# exist (auth/payment join it so Traefik can route to them; postoffice has
+# no public API — it's only reached over RabbitMQ — so it stays off `edge`).
+#
+# Deploy:
+#   docker stack deploy -c docker/stack.yml --env-file docker/stack.env fiam
+#
+# Redeploy after a new image is pushed to GHCR (re-running `docker stack
+# deploy` with the same files also works — it diffs and only touches
+# services whose config actually changed):
+#   docker service update --image ghcr.io/francis-nova/fiam-retail-apis:staging fiam_auth
+#   docker service update --image ghcr.io/francis-nova/fiam-retail-apis:staging fiam_payment
+#   docker service update --image ghcr.io/francis-nova/fiam-retail-apis:staging fiam_postoffice
+
+version: '3.8'
+
+x-image: &image ${IMAGE:-ghcr.io/francis-nova/fiam-retail-apis:staging}
+
+x-deploy-defaults: &deploy-defaults
+  replicas: 1
+  restart_policy:
+    condition: on-failure
+    delay: 5s
+    max_attempts: 5
+  update_config:
+    order: start-first
+    failure_action: rollback
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgres/init-databases.sh:/docker-entrypoint-initdb.d/init-databases.sh:ro
+    networks:
+      - internal
+    deploy:
+      restart_policy:
+        condition: on-failure
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    networks:
+      - internal
+    deploy:
+      restart_policy:
+        condition: on-failure
+
+  rabbitmq:
+    image: rabbitmq:4-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    networks:
+      - internal
+    deploy:
+      restart_policy:
+        condition: on-failure
+
+  minio:
+    image: minio/minio:latest
+    command: ["server", "/data"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    volumes:
+      - minio-data:/data
+    networks:
+      - internal
+    deploy:
+      restart_policy:
+        condition: on-failure
+
+  auth:
+    image: *image
+    command: ["node", "dist/apps/auth/apps/auth/src/main.js"]
+    environment:
+      NODE_ENV: production
+      AUTH_PORT: 7001
+      AUTH_DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/fiam_auth
+      CORS_ORIGIN: ${CORS_ORIGIN:-*}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+      JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-15m}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-30d}
+      KYC_PROVIDER: qoreid
+      QOREID_CLIENT_ID: ${QOREID_CLIENT_ID:-}
+      QOREID_SECRET: ${QOREID_SECRET:-}
+      QOREID_BASE_URL: ${QOREID_BASE_URL:-https://api.qoreid.com}
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: 9000
+      MINIO_USE_SSL: "false"
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      MINIO_BUCKET: ${MINIO_BUCKET:-fiam-kyc-documents}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASSWORD}@rabbitmq:5672
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:7001/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    networks:
+      - internal
+      - edge
+    deploy:
+      <<: *deploy-defaults
+      labels:
+        - traefik.enable=true
+        - traefik.http.routers.auth.rule=Host(`api.auth.staging.usefiam.com`)
+        - traefik.http.routers.auth.entrypoints=websecure
+        - traefik.http.routers.auth.tls.certresolver=le
+        - traefik.http.services.auth.loadbalancer.server.port=7001
+
+  payment:
+    image: *image
+    command: ["node", "dist/apps/payment/apps/payment/src/main.js"]
+    environment:
+      NODE_ENV: production
+      PAYMENT_PORT: 7003
+      PAYMENT_DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/fiam_payment
+      CORS_ORIGIN: ${CORS_ORIGIN:-*}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASSWORD}@rabbitmq:5672
+      REDIS_URL: redis://redis:6379
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+      PAYMENT_PROVIDER_NGN: vfd
+      VFD_AUTH_BASE_URL: ${VFD_AUTH_BASE_URL:-https://api-devapps.vfdbank.systems/vfd-tech/baas-portal/v1.1/baasauth}
+      VFD_WALLET_BASE_URL: ${VFD_WALLET_BASE_URL:-https://api-devapps.vfdbank.systems/vtech-wallet/api/v2/wallet2}
+      VFD_CONSUMER_KEY: ${VFD_CONSUMER_KEY:-}
+      VFD_CONSUMER_SECRET: ${VFD_CONSUMER_SECRET:-}
+      VFD_WEBHOOK_SECRET: ${VFD_WEBHOOK_SECRET:-}
+      VFD_BANK_CODE: ${VFD_BANK_CODE:-999999}
+      VFD_WALLET_NAME: ${VFD_WALLET_NAME:-FiamWallet}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:7003/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    networks:
+      - internal
+      - edge
+    deploy:
+      <<: *deploy-defaults
+      labels:
+        - traefik.enable=true
+        - traefik.http.routers.payment.rule=Host(`api.payment.staging.usefiam.com`)
+        - traefik.http.routers.payment.entrypoints=websecure
+        - traefik.http.routers.payment.tls.certresolver=le
+        - traefik.http.services.payment.loadbalancer.server.port=7003
+
+  postoffice:
+    image: *image
+    command: ["node", "dist/apps/postoffice/apps/postoffice/src/main.js"]
+    environment:
+      NODE_ENV: production
+      POSTOFFICE_PORT: 7002
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASSWORD}@rabbitmq:5672
+      SMS_PROVIDER: termii
+      TERMII_API_KEY: ${TERMII_API_KEY:-}
+      TERMII_SENDER_ID: ${TERMII_SENDER_ID:-}
+      TERMII_BASE_URL: ${TERMII_BASE_URL:-https://api.ng.termii.com}
+      EMAIL_PROVIDER: zeptomail
+      EMAIL_FROM_ADDRESS: ${EMAIL_FROM_ADDRESS:-noreply@usefiam.com}
+      EMAIL_FROM_NAME: ${EMAIL_FROM_NAME:-Fiam}
+      ZEPTOMAIL_TOKEN: ${ZEPTOMAIL_TOKEN:-}
+      ZEPTOMAIL_BASE_URL: ${ZEPTOMAIL_BASE_URL:-api.zeptomail.com/}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:7002/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    networks:
+      - internal
+    deploy:
+      <<: *deploy-defaults
+    # No `edge` network / Traefik labels — postoffice has no REST API for
+    # other services, it's only ever reached via the RabbitMQ queue.
+
+networks:
+  internal:
+  edge:
+    external: true
+
+volumes:
+  postgres-data:
+  redis-data:
+  rabbitmq-data:
+  minio-data:
