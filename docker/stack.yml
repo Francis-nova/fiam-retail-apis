@@ -7,8 +7,9 @@
 # exist (auth/payment join it so Traefik can route to them; postoffice has
 # no public API — it's only reached over RabbitMQ — so it stays off `edge`).
 #
-# Deploy:
-#   docker stack deploy -c docker/stack.yml --env-file docker/stack.env fiam
+# Deploy (from inside docker/ — `docker stack deploy` auto-loads `.env`
+# from the current directory, there's no --env-file flag):
+#   cd docker && docker stack deploy -c stack.yml fiam
 #
 # Redeploy after a new image is pushed to GHCR (re-running `docker stack
 # deploy` with the same files also works — it diffs and only touches

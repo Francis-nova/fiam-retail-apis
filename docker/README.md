@@ -34,29 +34,33 @@ auto-deploy yet.
    docker network create --driver overlay --attachable edge
    ```
 
-4. **Deploy Traefik** (reverse proxy + Let's Encrypt, one-time — this stack
+4. **Fill in secrets** — one shared `.env` file for both stacks, since
+   `docker stack deploy` has no `--env-file` flag; it auto-loads a file
+   literally named `.env` from the current directory (same mechanism
+   `docker compose` uses), so every command below runs from inside
+   `docker/`:
+   ```
+   cd docker
+   cp .env.example .env
+   # edit .env — see inline comments for what each value does
+   ```
+   `JWT_ACCESS_SECRET` must be identical to what `payment` uses to verify
+   auth-issued tokens — since both read the same `docker/.env`, that's
+   automatic as long as you don't duplicate the file.
+
+5. **Deploy Traefik** (reverse proxy + Let's Encrypt, one-time — this stack
    is not touched by app redeploys):
    ```
-   echo "ACME_EMAIL=you@usefiam.com" > docker/traefik.env
-   docker stack deploy -c docker/traefik-stack.yml --env-file docker/traefik.env traefik
+   cd docker && docker stack deploy -c traefik-stack.yml traefik
    ```
    DNS for both `api.auth.staging.usefiam.com` and
    `api.payment.staging.usefiam.com` must already point at this box's IP
    (it does, per the records already added) before Let's Encrypt's HTTP-01
    challenge will succeed.
 
-5. **Fill in secrets:**
-   ```
-   cp docker/stack.env.example docker/stack.env
-   # edit docker/stack.env — see inline comments for what each value does
-   ```
-   `JWT_ACCESS_SECRET` must be identical to what `payment` uses to verify
-   auth-issued tokens — since both read the same `docker/stack.env` in this
-   setup, that's automatic as long as you don't duplicate the file.
-
 6. **First deploy:**
    ```
-   docker stack deploy -c docker/stack.yml --env-file docker/stack.env fiam
+   cd docker && docker stack deploy -c stack.yml fiam
    ```
 
 7. **Run migrations** (not automatic on container boot — deliberately a

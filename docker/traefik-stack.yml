@@ -7,8 +7,12 @@
 # One-time setup, on the server:
 #   docker swarm init                                   # if not already a swarm
 #   docker network create --driver overlay --attachable edge
-#   echo "ACME_EMAIL=you@usefiam.com" > docker/traefik.env
-#   docker stack deploy -c docker/traefik-stack.yml --env-file docker/traefik.env traefik
+#   cd docker && echo "ACME_EMAIL=you@usefiam.com" > .env
+#   docker stack deploy -c traefik-stack.yml traefik
+# (`docker stack deploy` has no --env-file flag — it auto-loads a `.env`
+# file from the current directory for ${VAR} substitution, same as `docker
+# compose`, which is why the .env file needs to live next to the compose
+# file and the command run from inside docker/.)
 
 version: '3.8'
 
@@ -16,8 +20,12 @@ services:
   traefik:
     image: traefik:v3.1
     command:
-      - --providers.docker.swarmMode=true
-      - --providers.docker.exposedByDefault=false
+      # Traefik v3 replaced the v2 `providers.docker.swarmMode` flag with a
+      # dedicated Swarm provider — the old flag just fails to start ("option
+      # has been removed in v3").
+      - --providers.swarm.endpoint=unix:///var/run/docker.sock
+      - --providers.swarm.exposedByDefault=false
+      - --providers.swarm.network=edge
       - --entrypoints.web.address=:80
       - --entrypoints.websecure.address=:443
       - --entrypoints.web.http.redirections.entrypoint.to=websecure

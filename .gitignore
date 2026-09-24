@@ -4,5 +4,4 @@ coverage/
 .env
 *.tsbuildinfo
 
-docker/stack.env
-docker/traefik.env
+docker/.env
