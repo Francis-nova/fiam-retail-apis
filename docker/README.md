@@ -76,28 +76,58 @@ auto-deploy yet.
    separate step so schema changes stay explicit). This builds the
    `builder` stage locally (has `ts-node`/`tsconfig-paths`/the TypeORM CLI,
    which the slim runtime image doesn't) and runs it once against the
-   `internal` network:
+   `internal` network — as a **Swarm service**, not `docker run`: the
+   `internal` network in `stack.yml` isn't `attachable`, so a plain
+   `docker run --network fiam_internal` is refused ("not manually
+   attachable"); only Swarm-managed services can join it, hence
+   `docker service create` + `--restart-condition none` (run once, don't
+   restart) below:
    ```
    git clone <this repo> && cd fiam-retail-apis   # or `git pull` if already checked out on the box
    docker build --target builder -t fiam-apis-migrate .
-   docker run --rm --network fiam_internal \
-     --env AUTH_DATABASE_URL="postgres://postgres:<POSTGRES_PASSWORD>@postgres:5432/fiam_auth" \
+   set -a && . docker/.env && set +a
+
+   docker service create --name migrate-auth --network fiam_internal --restart-condition none \
+     --env AUTH_DATABASE_URL="postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/fiam_auth" \
      fiam-apis-migrate npm run migration:run:auth
-   docker run --rm --network fiam_internal \
-     --env PAYMENT_DATABASE_URL="postgres://postgres:<POSTGRES_PASSWORD>@postgres:5432/fiam_payment" \
+   docker service logs migrate-auth --no-trunc   # confirm it reached "query: COMMIT"
+   docker service rm migrate-auth
+
+   docker service create --name migrate-payment --network fiam_internal --restart-condition none \
+     --env PAYMENT_DATABASE_URL="postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/fiam_payment" \
      fiam-apis-migrate npm run migration:run:payment
+   docker service logs migrate-payment --no-trunc
+   docker service rm migrate-payment
    ```
 
 8. **Create the RabbitMQ dead-letter exchanges.** Both queues
-   (`account-provisioning`, `notification`) are declared with a
-   `deadLetterExchange` argument, but the exchange itself isn't
+   (`PAYMENT_ACCOUNT_PROVISIONING_QUEUE` = `payment.account_provisioning_requested`,
+   `POSTOFFICE_NOTIFICATION_QUEUE` = `postoffice.notification_requested`, see
+   `libs/common/src/messaging/`) are declared with a `deadLetterExchange`
+   argument of `<queue-name>.dlx`, but the exchange itself isn't
    auto-created — a nacked message with no matching exchange is just
-   silently dropped, not retried. Via the management UI
-   (`http://<server-ip>:15672`, exposed on the `internal` network only —
-   tunnel in with `ssh -L 15672:rabbitmq:15672 <server>` or temporarily
-   publish the port) create:
-   - exchange `account-provisioning.dlx` + a bound `account-provisioning.dlq`
-   - exchange `notification.dlx` + a bound `notification.dlq`
+   silently dropped, not retried. `rabbitmqadmin` is bundled in the
+   `rabbitmq:4-management-alpine` image, so this runs via `docker exec`
+   rather than needing a tunnel to the management UI (note: `rabbitmqadmin`
+   2.x's flag syntax is `--name value`, not the old 1.x `name=value` form):
+   ```
+   cd docker && set -a && . ./.env && set +a
+   CID=$(docker ps -q -f name=fiam_rabbitmq)
+
+   docker exec "$CID" rabbitmqadmin -u "$RABBITMQ_USER" -p "$RABBITMQ_PASSWORD" \
+     declare exchange --name payment.account_provisioning_requested.dlx --type fanout --durable true
+   docker exec "$CID" rabbitmqadmin -u "$RABBITMQ_USER" -p "$RABBITMQ_PASSWORD" \
+     declare queue --name payment.account_provisioning_requested.dlq --durable true
+   docker exec "$CID" rabbitmqadmin -u "$RABBITMQ_USER" -p "$RABBITMQ_PASSWORD" \
+     declare binding --source payment.account_provisioning_requested.dlx --destination-type queue --destination payment.account_provisioning_requested.dlq --routing-key ""
+
+   docker exec "$CID" rabbitmqadmin -u "$RABBITMQ_USER" -p "$RABBITMQ_PASSWORD" \
+     declare exchange --name postoffice.notification_requested.dlx --type fanout --durable true
+   docker exec "$CID" rabbitmqadmin -u "$RABBITMQ_USER" -p "$RABBITMQ_PASSWORD" \
+     declare queue --name postoffice.notification_requested.dlq --durable true
+   docker exec "$CID" rabbitmqadmin -u "$RABBITMQ_USER" -p "$RABBITMQ_PASSWORD" \
+     declare binding --source postoffice.notification_requested.dlx --destination-type queue --destination postoffice.notification_requested.dlq --routing-key ""
+   ```
 
    This is a pre-existing gap in the app code (same in local dev), not
    specific to staging — worth fixing properly (auto-declare the DLX on
