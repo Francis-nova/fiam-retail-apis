@@ -74,11 +74,13 @@ services:
         condition: on-failure
 
   minio:
-    # MinIO archived their OSS edition and removed minio/minio from Docker
-    # Hub entirely (early 2026) — quay.io/minio/minio still serves the same
-    # images. Worth a separate conversation about longer-term object storage
-    # given the OSS edition is now unmaintained.
-    image: quay.io/minio/minio:latest
+    # MinIO cut off anonymous image pulls entirely as of 2026-09-24 — gone
+    # from Docker Hub, and quay.io/minio/minio now 401s even for `docker
+    # pull` (not just Swarm's digest-resolution step). Chainguard's rebuild
+    # is the same minio server binary/API, still pulls anonymously.
+    # Worth a separate conversation about longer-term object storage now
+    # that MinIO's own distribution is this unstable.
+    image: cgr.dev/chainguard/minio:latest
     command: ["server", "/data"]
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
