@@ -18,14 +18,11 @@ version: '3.8'
 
 services:
   traefik:
-    image: traefik:v3.1
-    environment:
-      # Traefik v3.1's vendored Docker client falls back to the ancient API
-      # version 1.24 rather than negotiating with the daemon, which recent
-      # Docker Engine (29.x, min supported API 1.40) rejects outright
-      # ("client version 1.24 is too old"). Pin an explicit version well
-      # within both sides' supported range to skip that broken fallback.
-      DOCKER_API_VERSION: "1.44"
+    # Docker 29 raised its minimum supported API version to 1.44; Traefik
+    # <3.6 hardcodes API 1.24 for the Swarm provider with no negotiation
+    # (DOCKER_API_VERSION doesn't help — confirmed on this box). v3.6 added
+    # proper auto-negotiation. See traefik/traefik#12253.
+    image: traefik:v3.6
     command:
       # Traefik v3 replaced the v2 `providers.docker.swarmMode` flag with a
       # dedicated Swarm provider — the old flag just fails to start ("option
