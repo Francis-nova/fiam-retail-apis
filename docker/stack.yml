@@ -7,9 +7,11 @@
 # exist (auth/payment join it so Traefik can route to them; postoffice has
 # no public API — it's only reached over RabbitMQ — so it stays off `edge`).
 #
-# Deploy (from inside docker/ — `docker stack deploy` auto-loads `.env`
-# from the current directory, there's no --env-file flag):
-#   cd docker && docker stack deploy -c stack.yml fiam
+# Deploy (from inside docker/ — `docker stack deploy` has no --env-file
+# flag AND, unlike `docker compose`, does not auto-load a `.env` file
+# either; confirmed on the server. ${VAR} substitution only sees real
+# shell-exported env vars, so source the file first):
+#   cd docker && set -a && . ./.env && set +a && docker stack deploy -c stack.yml fiam
 #
 # Redeploy after a new image is pushed to GHCR (re-running `docker stack
 # deploy` with the same files also works — it diffs and only touches
@@ -72,7 +74,11 @@ services:
         condition: on-failure
 
   minio:
-    image: minio/minio:latest
+    # MinIO archived their OSS edition and removed minio/minio from Docker
+    # Hub entirely (early 2026) — quay.io/minio/minio still serves the same
+    # images. Worth a separate conversation about longer-term object storage
+    # given the OSS edition is now unmaintained.
+    image: quay.io/minio/minio:latest
     command: ["server", "/data"]
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}

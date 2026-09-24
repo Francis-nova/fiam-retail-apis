@@ -34,11 +34,7 @@ auto-deploy yet.
    docker network create --driver overlay --attachable edge
    ```
 
-4. **Fill in secrets** — one shared `.env` file for both stacks, since
-   `docker stack deploy` has no `--env-file` flag; it auto-loads a file
-   literally named `.env` from the current directory (same mechanism
-   `docker compose` uses), so every command below runs from inside
-   `docker/`:
+4. **Fill in secrets** — one shared `.env` file for both stacks:
    ```
    cd docker
    cp .env.example .env
@@ -48,19 +44,32 @@ auto-deploy yet.
    auth-issued tokens — since both read the same `docker/.env`, that's
    automatic as long as you don't duplicate the file.
 
+   **`docker stack deploy` does not read `.env` on its own** — no
+   `--env-file` flag, and unlike `docker compose` it doesn't auto-load a
+   `.env` file from the working directory either (confirmed directly on
+   this box: `${VAR}` substitution silently resolves to an empty string
+   with no error — Postgres refused to start with "superuser password is
+   not specified", and Traefik's ACME email came through blank, both
+   without any complaint from `docker stack deploy` itself). Every deploy
+   command below sources the file into the actual shell environment first:
+   `set -a && . ./.env && set +a`.
+
 5. **Deploy Traefik** (reverse proxy + Let's Encrypt, one-time — this stack
    is not touched by app redeploys):
    ```
-   cd docker && docker stack deploy -c traefik-stack.yml traefik
+   cd docker && set -a && . ./.env && set +a && docker stack deploy -c traefik-stack.yml traefik
    ```
    DNS for both `api.auth.staging.usefiam.com` and
    `api.payment.staging.usefiam.com` must already point at this box's IP
    (it does, per the records already added) before Let's Encrypt's HTTP-01
-   challenge will succeed.
+   challenge will succeed. Use `traefik:v3.6` or later — v3.1 (and v3.5)
+   hardcode Docker API version 1.24 for the Swarm provider with no
+   negotiation, which Docker Engine 29+ rejects outright ("client version
+   1.24 is too old"); v3.6 fixed this (traefik/traefik#12253).
 
 6. **First deploy:**
    ```
-   cd docker && docker stack deploy -c stack.yml fiam
+   cd docker && set -a && . ./.env && set +a && docker stack deploy -c stack.yml fiam
    ```
 
 7. **Run migrations** (not automatic on container boot — deliberately a
@@ -125,6 +134,11 @@ services — new code should never run against an unmigrated schema.
   into the image so OCR works without an outbound fetch to jsdelivr's CDN
   on first use.
 - Provider credentials (QoreID, VFD, Termii, ZeptoMail) are all optional at
-  boot — leaving them blank in `stack.env` keeps the rest of each service
+  boot — leaving them blank in `docker/.env` keeps the rest of each service
   working; only the specific provider-backed endpoint returns a clear error
   until real credentials are filled in.
+- **MinIO's OSS edition is archived** (as of early 2026) and `minio/minio`
+  was pulled from Docker Hub entirely — `stack.yml` points at
+  `quay.io/minio/minio` instead, which still serves the same images. Worth
+  a separate conversation about longer-term object storage given the OSS
+  edition is no longer maintained upstream.

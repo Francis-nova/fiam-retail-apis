@@ -8,11 +8,12 @@
 #   docker swarm init                                   # if not already a swarm
 #   docker network create --driver overlay --attachable edge
 #   cd docker && echo "ACME_EMAIL=you@usefiam.com" > .env
-#   docker stack deploy -c traefik-stack.yml traefik
-# (`docker stack deploy` has no --env-file flag — it auto-loads a `.env`
-# file from the current directory for ${VAR} substitution, same as `docker
-# compose`, which is why the .env file needs to live next to the compose
-# file and the command run from inside docker/.)
+#   set -a && . ./.env && set +a && docker stack deploy -c traefik-stack.yml traefik
+# (`docker stack deploy` has no --env-file flag and, unlike `docker
+# compose`, does NOT auto-load a `.env` file either — confirmed on the
+# server: ${VAR} substitution silently resolves to empty without this,
+# no error. `source`ing the file into the shell first is what actually
+# works.)
 
 version: '3.8'
 
