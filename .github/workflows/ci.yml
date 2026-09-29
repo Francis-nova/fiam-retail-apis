@@ -88,8 +88,8 @@ jobs:
           echo "${{ secrets.STAGING_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
 
       # Rolls each service to the immutable :<sha> tag (not :staging) so Swarm
-      # always sees a changed image. --with-registry-auth forwards the login
-      # to the swarm nodes; --detach=false blocks until the rollout converges
+      # always sees a changed image. The GHCR package is public, so no
+      # registry login is needed. --detach=false blocks until the rollout converges
       # and fails the job if Swarm rolls back (stack.yml sets
       # failure_action: rollback, start-first).
       # Migrations are NOT run here — see docker/README.md step 7.
@@ -99,9 +99,8 @@ jobs:
             "${{ secrets.STAGING_SSH_USER }}@${{ secrets.STAGING_SSH_HOST }}" \
             bash -s <<'REMOTE'
           set -euo pipefail
-          echo "${{ secrets.GHCR_READ_TOKEN }}" | docker login ghcr.io -u "${{ secrets.GHCR_READ_USER }}" --password-stdin
           for svc in auth payment postoffice; do
-            docker service update --with-registry-auth --detach=false \
+            docker service update --detach=false \
               --image "${{ env.IMAGE }}:${{ github.sha }}" "fiam_${svc}"
           done
           REMOTE
