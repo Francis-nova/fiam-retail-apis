@@ -1,18 +1,46 @@
 import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth } from '@nestjs/swagger';
 import { TransactionsService } from './transactions.service';
-import { Transaction, TransactionType } from './entities/transaction.entity';
+import {
+  Transaction,
+  TransactionStatus,
+  TransactionType,
+} from './entities/transaction.entity';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { AuthenticatedUser } from '../auth/current-user.decorator';
 
 const DEFAULT_LIMIT = 20;
-const MAX_LIMIT = 100;
+const MAX_LIMIT = 200;
 
 function parseLimit(raw: string | undefined): number {
   const parsed = raw ? Number.parseInt(raw, 10) : DEFAULT_LIMIT;
   if (!Number.isFinite(parsed) || parsed < 1) return DEFAULT_LIMIT;
   return Math.min(parsed, MAX_LIMIT);
+}
+
+function parseType(raw: string | undefined): TransactionType | undefined {
+  return raw === TransactionType.CREDIT || raw === TransactionType.DEBIT
+    ? raw
+    : undefined;
+}
+
+// Comma-separated statuses (e.g. "PENDING,PROCESSING"); unknown values dropped.
+function parseStatuses(raw: string | undefined): TransactionStatus[] {
+  if (!raw) return [];
+  const valid = Object.values(TransactionStatus) as string[];
+  return raw
+    .split(',')
+    .map((s) => s.trim().toUpperCase())
+    .filter((s) => valid.includes(s)) as TransactionStatus[];
+}
+
+// ISO timestamps only; anything unparseable is ignored rather than a 400 so
+// a stale/odd client never blanks the history screen.
+function parseDate(raw: string | undefined): Date | undefined {
+  if (!raw) return undefined;
+  const date = new Date(raw);
+  return Number.isNaN(date.getTime()) ? undefined : date;
 }
 
 export interface TransactionResponse {
@@ -97,10 +125,20 @@ export class TransactionsController {
   async list(
     @CurrentUser() user: AuthenticatedUser,
     @Query('limit') limit?: string,
+    @Query('type') type?: string,
+    @Query('status') status?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
   ): Promise<TransactionResponse[]> {
     const transactions = await this.transactionsService.findAllForUser(
       user.userId,
       parseLimit(limit),
+      {
+        type: parseType(type),
+        status: parseStatuses(status),
+        from: parseDate(from),
+        to: parseDate(to),
+      },
     );
     return transactions.map(toResponse);
   }

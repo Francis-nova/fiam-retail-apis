@@ -22,11 +22,20 @@ export interface VfdCreateAccountResponse {
   };
 }
 
+export interface VfdBankListData {
+  bank?: {
+    id: number;
+    code: string;
+    name: string;
+    logo?: string;
+    created?: string;
+  }[];
+}
+
 export interface VfdBankListResponse {
   status?: string;
   message?: string;
-  // Shape unconfirmed — see normalizeVfdBankList in vfd-bank-list.util.ts.
-  data?: unknown;
+  data?: VfdBankListData;
 }
 
 export interface VfdAccountEnquiryResponse {

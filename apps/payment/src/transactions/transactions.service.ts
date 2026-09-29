@@ -2,7 +2,7 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Queue } from 'bullmq';
-import { In, Repository } from 'typeorm';
+import { Repository } from 'typeorm';
 import Decimal from 'decimal.js';
 import { CurrencyCode } from '@app/common';
 import { AddressService } from '../wallets/address.service';
@@ -115,17 +115,49 @@ export class TransactionsService {
   // not occurredAt/verifiedAt: occurredAt is only ever set for CREDIT
   // (from VFD's webhook timestamp) and stays null for DEBIT/payout rows,
   // so it can't be a reliable universal sort key.
-  async findAllForUser(userId: string, limit: number): Promise<Transaction[]> {
+  async findAllForUser(
+    userId: string,
+    limit: number,
+    filters: {
+      type?: TransactionType;
+      status?: TransactionStatus[];
+      from?: Date;
+      to?: Date;
+    } = {},
+  ): Promise<Transaction[]> {
     const wallets = await this.walletsService.findAllForUser(userId);
     if (wallets.length === 0) {
       return [];
     }
-    return this.transactionsRepo.find({
-      where: { walletId: In(wallets.map((wallet) => wallet.id)) },
-      relations: ['beneficiary'],
-      order: { createdAt: 'DESC' },
-      take: limit,
-    });
+    const query = this.transactionsRepo
+      .createQueryBuilder('t')
+      .leftJoinAndSelect('t.beneficiary', 'beneficiary')
+      .where('t.walletId IN (:...walletIds)', {
+        walletIds: wallets.map((wallet) => wallet.id),
+      })
+      .orderBy('t.createdAt', 'DESC')
+      .take(limit);
+    if (filters.type) {
+      query.andWhere('t.type = :type', { type: filters.type });
+    }
+    if (filters.status?.length) {
+      query.andWhere('t.status IN (:...statuses)', {
+        statuses: filters.status,
+      });
+    }
+    // Same "when did it happen" the mobile app displays and groups by:
+    // the provider's timestamp when there is one, else when we saw it.
+    if (filters.from) {
+      query.andWhere('COALESCE(t.occurredAt, t.createdAt) >= :from', {
+        from: filters.from,
+      });
+    }
+    if (filters.to) {
+      query.andWhere('COALESCE(t.occurredAt, t.createdAt) <= :to', {
+        to: filters.to,
+      });
+    }
+    return query.getMany();
   }
 
   // Ownership isn't a column on Transaction itself (only walletId is) — so
