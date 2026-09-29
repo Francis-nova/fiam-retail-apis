@@ -87,12 +87,44 @@ jobs:
           chmod 600 ~/.ssh/id_deploy
           echo "${{ secrets.STAGING_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
 
+      # Runs the compiled TypeORM migrations from the just-pushed image as a
+      # one-shot Swarm job on the internal network (a plain `docker run` can't
+      # join it — see docker/README.md step 7). DB URLs are read from the
+      # already-running services' env so no secrets are duplicated in CI.
+      - name: Run migrations
+        run: |
+          ssh -i ~/.ssh/id_deploy -o IdentitiesOnly=yes \
+            "${{ secrets.STAGING_SSH_USER }}@${{ secrets.STAGING_SSH_HOST }}" \
+            bash -s <<'REMOTE'
+          set -euo pipefail
+          for app in auth payment; do
+            name="migrate-${app}-${{ github.run_id }}"
+            var="$(echo "$app" | tr a-z A-Z)_DATABASE_URL"
+            db_url=$(docker service inspect "fiam_${app}" \
+              --format '{{range .Spec.TaskTemplate.ContainerSpec.Env}}{{println .}}{{end}}' \
+              | grep "^${var}=" | cut -d= -f2-)
+            [ -n "$db_url" ] || { echo "could not read $var from fiam_${app}" >&2; exit 1; }
+            status=0
+            docker service create --detach=false --name "$name" \
+              --mode replicated-job --network fiam_internal \
+              --restart-condition none \
+              --env "${var}=${db_url}" \
+              "${{ env.IMAGE }}:${{ github.sha }}" \
+              npm run "migration:run:${app}:prod" || status=$?
+            docker service logs "$name" --no-trunc 2>&1 | tail -n 40 || true
+            docker service rm "$name" >/dev/null
+            [ "$status" -eq 0 ] || { echo "migrations for $app failed" >&2; exit 1; }
+          done
+          REMOTE
+
       # Rolls each service to the immutable :<sha> tag (not :staging) so Swarm
       # always sees a changed image. The GHCR package is public, so no
       # registry login is needed. --detach=false blocks until the rollout converges
       # and fails the job if Swarm rolls back (stack.yml sets
       # failure_action: rollback, start-first).
-      # Migrations are NOT run here — see docker/README.md step 7.
+      # Migrations run first (previous step), so new code never meets an
+      # unmigrated schema; if a migration fails the job stops before any
+      # service rolls.
       - name: Roll out image
         run: |
           ssh -i ~/.ssh/id_deploy -o IdentitiesOnly=yes \

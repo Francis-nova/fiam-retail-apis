@@ -24,6 +24,8 @@ export interface TransactionResponse {
   fee: string | null;
   balanceAfter: string | null;
   reference: string;
+  // Provider's session id (NIBSS session for VFD) — null when none was issued.
+  sessionId: string | null;
   provider: string;
   narration: string | null;
   // Who the money came from (CREDIT) or went to (DEBIT) — resolved from
@@ -70,6 +72,7 @@ function toResponse(transaction: Transaction): TransactionResponse {
     fee: transaction.fee,
     balanceAfter: transaction.balanceAfter,
     reference: transaction.reference,
+    sessionId: transaction.externalId,
     provider: transaction.provider,
     narration: transaction.narration,
     counterpartyName,
