@@ -14,7 +14,7 @@ interface EnvVars {
   OTP_LENGTH: number;
   OTP_MAX_ATTEMPTS: number;
   OTP_RESEND_COOLDOWN_SECONDS: number;
-  KYC_PROVIDER: 'qoreid';
+  KYC_PROVIDER: 'qoreid' | 'passthrough';
   QOREID_CLIENT_ID: string;
   QOREID_SECRET: string;
   QOREID_BASE_URL: string;
@@ -45,7 +45,7 @@ export const envSchema = Joi.object<EnvVars>({
   // the rest of the auth service (register/login) must keep working in
   // dev/demo before real QoreID keys are provisioned. The provider itself
   // throws a clear error if invoked without a key configured.
-  KYC_PROVIDER: Joi.string().valid('qoreid').default('qoreid'),
+  KYC_PROVIDER: Joi.string().valid('qoreid', 'passthrough').default('qoreid'),
   QOREID_CLIENT_ID: Joi.string().allow('').default(''),
   QOREID_SECRET: Joi.string().allow('').default(''),
   QOREID_BASE_URL: Joi.string().uri().default('https://api.qoreid.com'),

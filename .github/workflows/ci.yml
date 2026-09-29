@@ -67,3 +67,41 @@ jobs:
             ${{ env.IMAGE }}:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  deploy-staging:
+    needs: [docker]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/staging'
+    runs-on: ubuntu-latest
+    environment: staging
+    concurrency:
+      group: deploy-staging
+      cancel-in-progress: false
+    steps:
+      - name: Compute lowercase image name
+        run: echo "IMAGE=ghcr.io/$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')/fiam-retail-apis" >> "$GITHUB_ENV"
+
+      - name: Configure SSH
+        run: |
+          install -m 700 -d ~/.ssh
+          echo "${{ secrets.STAGING_SSH_KEY }}" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          echo "${{ secrets.STAGING_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+
+      # Rolls each service to the immutable :<sha> tag (not :staging) so Swarm
+      # always sees a changed image. --with-registry-auth forwards the login
+      # to the swarm nodes; --detach=false blocks until the rollout converges
+      # and fails the job if Swarm rolls back (stack.yml sets
+      # failure_action: rollback, start-first).
+      # Migrations are NOT run here — see docker/README.md step 7.
+      - name: Roll out image
+        run: |
+          ssh -i ~/.ssh/id_deploy -o IdentitiesOnly=yes \
+            "${{ secrets.STAGING_SSH_USER }}@${{ secrets.STAGING_SSH_HOST }}" \
+            bash -s <<'REMOTE'
+          set -euo pipefail
+          echo "${{ secrets.GHCR_READ_TOKEN }}" | docker login ghcr.io -u "${{ secrets.GHCR_READ_USER }}" --password-stdin
+          for svc in auth payment postoffice; do
+            docker service update --with-registry-auth --detach=false \
+              --image "${{ env.IMAGE }}:${{ github.sha }}" "fiam_${svc}"
+          done
+          REMOTE

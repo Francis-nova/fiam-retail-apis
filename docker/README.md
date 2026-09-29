@@ -12,8 +12,10 @@ TLS for the two public services:
 CI (`.github/workflows/ci.yml`) builds and pushes the image to
 `ghcr.io/francis-nova/fiam-retail-apis` on every push to `staging`, tagged
 both `:staging` and `:<commit-sha>`. **Rolling that image out to the server
-is a manual step** (see "Deploying a new build" below) — there is no
-auto-deploy yet.
+is automated for `staging`** by the `deploy-staging` job in the same workflow
+(SSH into the box and `docker service update` each service to the new
+`:<sha>` tag). Migrations and `stack.yml`/`.env` changes stay manual (see
+"Deploying a new build" below).
 
 ## One-time server setup
 
