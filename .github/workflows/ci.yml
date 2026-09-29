@@ -105,12 +105,16 @@ jobs:
               | grep "^${var}=" | cut -d= -f2-)
             [ -n "$db_url" ] || { echo "could not read $var from fiam_${app}" >&2; exit 1; }
             status=0
-            docker service create --detach=false --name "$name" \
+            # The runtime image has no package.json (so no `npm run`) — call
+            # the TypeORM CLI against the compiled data source directly.
+            # `timeout` stops a crash-looping job from hanging the deploy.
+            timeout 300 docker service create --detach=false --name "$name" \
               --mode replicated-job --network fiam_internal \
               --restart-condition none \
               --env "${var}=${db_url}" \
               "${{ env.IMAGE }}:${{ github.sha }}" \
-              npm run "migration:run:${app}:prod" || status=$?
+              node node_modules/typeorm/cli.js migration:run \
+              -d "dist/apps/${app}/apps/${app}/src/database/data-source.js" || status=$?
             docker service logs "$name" --no-trunc 2>&1 | tail -n 40 || true
             docker service rm "$name" >/dev/null
             [ "$status" -eq 0 ] || { echo "migrations for $app failed" >&2; exit 1; }
