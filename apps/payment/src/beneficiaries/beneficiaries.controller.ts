@@ -14,7 +14,16 @@ export class BeneficiariesController {
   @Get()
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  list(@CurrentUser() user: AuthenticatedUser) {
-    return this.beneficiariesService.findAllForUser(user.userId);
+  async list(@CurrentUser() user: AuthenticatedUser) {
+    const recents = await this.beneficiariesService.findAllForUser(user.userId);
+    return recents.map(({ beneficiary, transferCount, lastTransferAt }) => ({
+      id: beneficiary.id,
+      bankCode: beneficiary.bankCode,
+      bankName: beneficiary.bankName,
+      accountNumber: beneficiary.accountNumber,
+      accountName: beneficiary.accountName,
+      transferCount,
+      lastTransferAt: lastTransferAt.toISOString(),
+    }));
   }
 }
