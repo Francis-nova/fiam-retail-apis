@@ -77,6 +77,6 @@ export default (): PaymentConfig => ({
     consumerSecret: process.env.VFD_CONSUMER_SECRET ?? '',
     webhookSecret: process.env.VFD_WEBHOOK_SECRET ?? '',
     bankCode: process.env.VFD_BANK_CODE ?? '999999',
-    walletName: process.env.VFD_WALLET_NAME ?? 'FiamWallet',
+    walletName: process.env.VFD_WALLET_NAME ?? 'ADL',
   },
 });

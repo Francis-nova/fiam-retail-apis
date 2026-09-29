@@ -1,4 +1,4 @@
-import { randomBytes } from 'crypto';
+import { randomInt } from 'crypto';
 import {
   BadRequestException,
   Inject,
@@ -176,7 +176,7 @@ export class PayoutsService {
       recipient,
     );
 
-    const reference = `${walletName}-${randomBytes(10).toString('hex')}`;
+    const reference = await this.generateReference(walletName, provider.key);
 
     const transaction = await this.dataSource.transaction(async (manager) => {
       // Debits amount + fee together — the fee is a platform charge on top
@@ -218,6 +218,24 @@ export class PayoutsService {
     });
 
     return this.applyTransferResult(transaction, result);
+  }
+
+  // "ADL007884944": wallet-name prefix (which VFD requires on every transfer
+  // reference) followed by 9 random digits. The space is small (10^9), so a
+  // clash with an existing reference is checked for and retried rather than
+  // left to fail the debit on the unique index.
+  private async generateReference(
+    walletName: string,
+    provider: Transaction['provider'],
+  ): Promise<string> {
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const digits = String(randomInt(0, 1_000_000_000)).padStart(9, '0');
+      const reference = `${walletName}${digits}`;
+      if (!(await this.transactionsRepo.existsBy({ provider, reference }))) {
+        return reference;
+      }
+    }
+    throw new Error('Could not generate a unique transaction reference');
   }
 
   private async saveBeneficiary(

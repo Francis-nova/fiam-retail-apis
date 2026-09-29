@@ -56,7 +56,7 @@ export const envSchema = Joi.object<EnvVars>({
   // Prefixes every /transfer reference (VFD requires "wallet name" prefixed
   // references) — safe to default in dev, should be set explicitly for a
   // real registered wallet name in production.
-  VFD_WALLET_NAME: Joi.string().default('FiamWallet'),
+  VFD_WALLET_NAME: Joi.string().default('ADL'),
 });
 
 export function validate(config: Record<string, unknown>) {
