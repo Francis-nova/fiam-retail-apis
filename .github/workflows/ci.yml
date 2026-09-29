@@ -102,5 +102,10 @@ jobs:
           for svc in auth payment postoffice; do
             docker service update --detach=false \
               --image "${{ env.IMAGE }}:${{ github.sha }}" "fiam_${svc}"
+            state=$(docker service inspect "fiam_${svc}" --format '{{.UpdateStatus.State}}')
+            if [ "$state" != "completed" ]; then
+              echo "fiam_${svc} update ended in state: $state" >&2
+              exit 1
+            fi
           done
           REMOTE
