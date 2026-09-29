@@ -59,10 +59,9 @@ export class PayoutsService {
   ) {}
 
   private transferType(bankCode: string): ProviderTransferType {
-    const { bankCode: ownBankCode } = this.configService.get('vfd', {
-      infer: true,
-    });
-    return bankCode === ownBankCode ? 'intra' : 'inter';
+    return this.registry
+      .getProviderForCurrency(CurrencyCode.NGN)
+      .resolveTransferType(bankCode);
   }
 
   // Read-only name enquiry — lets the client confirm "paying <NAME>" before
@@ -156,7 +155,12 @@ export class PayoutsService {
     // Both fresh per VFD's own documented golden path — the recipient's
     // clientId/accountId/session can be short-lived, so this is never read
     // from the saved Beneficiary row.
-    const [fromDetails, recipient] = await Promise.all([
+    // VFD runs as a pool: money leaves the pool account (no account number
+    // passed to enquiry), and the customer's sub-account is only identified
+    // as uniqueSenderAccountId. Sending from the customer's own VFD account
+    // is rejected with 99 "Invalid source".
+    const [fromDetails, senderDetails, recipient] = await Promise.all([
+      provider.getAccountDetails(),
       provider.getAccountDetails(address.providerAccountNumber),
       provider.lookupTransferRecipient({
         accountNumber,
@@ -204,6 +208,7 @@ export class PayoutsService {
 
     const result = await provider.initiateTransfer({
       from: fromDetails,
+      senderAccountId: senderDetails.accountId || null,
       to: recipient,
       bankCode,
       transferType,
@@ -261,6 +266,8 @@ export class PayoutsService {
       });
     } else if (result.outcome === 'FAILED') {
       await this.reverseFailedPayout(transaction.id);
+    } else if (result.outcome === 'HOLD') {
+      this.holdForReview(transaction, result.providerStatusCode);
     } else {
       // REQUERY — VFD's response was ambiguous or unreachable; never guess,
       // poll TSQ until it resolves. ~10 attempts with exponential backoff
@@ -276,6 +283,19 @@ export class PayoutsService {
       );
     }
     return this.transactionsRepo.findOneByOrFail({ id: transaction.id });
+  }
+
+  // The provider failed the transfer but instructs us NOT to reverse it
+  // (e.g. suspected fraud). The customer's debit stays in place and the
+  // transaction is left PROCESSING — never auto-refunded, never retried —
+  // until someone reconciles it with the provider's support.
+  holdForReview(
+    transaction: Pick<Transaction, 'id' | 'reference'>,
+    providerStatusCode: string | null,
+  ): void {
+    this.logger.error(
+      `Payout ${transaction.reference} (transaction ${transaction.id}) failed with provider code ${providerStatusCode ?? 'unknown'} and a NO-REVERSAL instruction — funds held, needs manual review with the provider`,
+    );
   }
 
   // Public: also called by PayoutStatusQueryProcessor once TSQ confirms a

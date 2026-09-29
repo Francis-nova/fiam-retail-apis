@@ -81,7 +81,7 @@ export class WebhooksService {
         'Could not verify transaction with VFD yet',
       );
     }
-    if (requery.outcome === 'FAILED') {
+    if (requery.outcome === 'FAILED' || requery.outcome === 'HOLD') {
       await noteFailure(
         `TSQ did not confirm the transaction (status ${requery.providerStatusCode ?? 'unknown'})`,
         requery.rawPayload,

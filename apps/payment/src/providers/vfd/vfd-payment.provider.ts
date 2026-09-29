@@ -18,6 +18,7 @@ import {
   ProviderTransferRecipient,
   ProviderTransferRecipientInput,
   ProviderTransferResult,
+  ProviderTransferType,
 } from '../payment-provider.interface';
 import { formatDateForVfd } from './vfd-date.util';
 import { normalizeVfdBankList } from './vfd-bank-list.util';
@@ -203,6 +204,15 @@ export class VfdPaymentProvider implements PaymentProvider {
     );
   }
 
+  // 999999 = VFD's own bank code, so a destination with that code is a
+  // VFD-to-VFD (intra) transfer; anything else is inter-bank.
+  resolveTransferType(bankCode: string): ProviderTransferType {
+    const { bankCode: ownBankCode } = this.configService.get('vfd', {
+      infer: true,
+    });
+    return bankCode.trim() === ownBankCode ? 'intra' : 'inter';
+  }
+
   async listBanks(): Promise<ProviderBank[]> {
     const { walletBaseUrl } = this.configService.get('vfd', { infer: true });
     const response = await this.authorizedFetch(`${walletBaseUrl}/bank`);
@@ -319,7 +329,10 @@ export class VfdPaymentProvider implements PaymentProvider {
     // transfer type, not that the other must be blank, so both are sent.
     const payload = {
       fromAccount: input.from.accountNumber,
-      uniqueSenderAccountId: '',
+      // Pool implementation: `from*` is the pool account (VFD rejects any
+      // other source with 99 "Invalid source"); the customer's own
+      // sub-account rides along as uniqueSenderAccountId.
+      uniqueSenderAccountId: input.senderAccountId ?? '',
       fromClientId: input.from.clientId,
       fromClient: input.from.clientName,
       fromSavingsId: input.from.accountId,

@@ -70,6 +70,12 @@ export class PayoutStatusQueryProcessor extends WorkerHost {
       await this.payoutsService.reverseFailedPayout(transactionId);
       return;
     }
+    if (result.outcome === 'HOLD') {
+      // Terminal for polling purposes (no throw → no retry): the provider
+      // told us not to reverse, so this waits for manual review.
+      this.payoutsService.holdForReview(transaction, result.providerStatusCode);
+      return;
+    }
 
     // Still unresolved — throw to trigger BullMQ's own attempts/backoff
     // retry (configured at enqueue time in PayoutsService).
