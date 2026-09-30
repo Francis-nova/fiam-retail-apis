@@ -11,6 +11,7 @@ import { BeneficiariesModule } from '../beneficiaries/beneficiaries.module';
 import { BanksModule } from '../banks/banks.module';
 import { PaymentProvidersModule } from '../providers/payment-providers.module';
 import { PaymentAuthModule } from '../auth/payment-auth.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { PaymentAuthModule } from '../auth/payment-auth.module';
     BanksModule,
     PaymentProvidersModule,
     PaymentAuthModule,
+    NotificationsModule,
   ],
   controllers: [PayoutsController],
   providers: [PayoutsService, PayoutStatusQueryProcessor],

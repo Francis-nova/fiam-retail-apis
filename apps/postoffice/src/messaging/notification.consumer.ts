@@ -10,6 +10,9 @@ import { SMS_PROVIDER } from '../sms/sms-provider.interface';
 import type { SmsProvider } from '../sms/sms-provider.interface';
 import { EMAIL_PROVIDER } from '../email/email-provider.interface';
 import type { EmailProvider } from '../email/email-provider.interface';
+import { PUSH_PROVIDER } from '../push/push-provider.interface';
+import type { PushProvider } from '../push/push-provider.interface';
+import { isPushTemplate, renderPush } from '../push/push-templates';
 import { TemplateRendererService } from '../email/template-renderer.service';
 import { isEmailTemplate, subjectFor } from '../email/email-templates';
 
@@ -20,6 +23,7 @@ export class NotificationConsumer {
   constructor(
     @Inject(SMS_PROVIDER) private readonly smsProvider: SmsProvider,
     @Inject(EMAIL_PROVIDER) private readonly emailProvider: EmailProvider,
+    @Inject(PUSH_PROVIDER) private readonly pushProvider: PushProvider,
     private readonly templateRenderer: TemplateRendererService,
   ) {}
 
@@ -41,6 +45,9 @@ export class NotificationConsumer {
         case NotificationChannel.EMAIL:
           await this.sendEmail(message);
           break;
+        case NotificationChannel.PUSH:
+          await this.sendPush(message);
+          break;
         default:
           this.logger.warn(
             `No handler yet for channel "${message.channel}" (template: ${message.template})`,
@@ -56,6 +63,16 @@ export class NotificationConsumer {
       // dead-letter exchange for manual investigation instead.
       channel.nack(originalMsg, false, false);
     }
+  }
+
+  private async sendPush(message: NotificationRequestedMessage): Promise<void> {
+    if (!isPushTemplate(message.template)) {
+      throw new Error(`Unknown push template: ${message.template}`);
+    }
+    await this.pushProvider.send(
+      message.recipient,
+      renderPush(message.template, message.data),
+    );
   }
 
   private async sendEmail(

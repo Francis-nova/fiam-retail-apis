@@ -15,6 +15,8 @@ interface EnvVars {
   EMAIL_FROM_NAME: string;
   ZEPTOMAIL_TOKEN: string;
   ZEPTOMAIL_BASE_URL: string;
+  ONESIGNAL_APP_ID: string;
+  ONESIGNAL_REST_API_KEY: string;
 }
 
 export const envSchema = Joi.object<EnvVars>({
@@ -42,6 +44,10 @@ export const envSchema = Joi.object<EnvVars>({
   // e.g. "api.zeptomail.com/", and prepends the scheme itself.
   ZEPTOMAIL_TOKEN: Joi.string().allow('').default(''),
   ZEPTOMAIL_BASE_URL: Joi.string().default('api.zeptomail.com/'),
+  // Push — OneSignal. Same "optional at boot" convention: the provider
+  // throws a clear error if invoked without them.
+  ONESIGNAL_APP_ID: Joi.string().allow('').default(''),
+  ONESIGNAL_REST_API_KEY: Joi.string().allow('').default(''),
 });
 
 export function validate(config: Record<string, unknown>) {

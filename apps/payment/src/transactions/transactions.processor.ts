@@ -5,6 +5,7 @@ import { Job } from 'bullmq';
 import { DataSource, Repository } from 'typeorm';
 import Decimal from 'decimal.js';
 import { WalletsService } from '../wallets/wallets.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import {
   Transaction,
   TransactionStatus,
@@ -24,6 +25,7 @@ export class TransactionsProcessor extends WorkerHost {
     private readonly transactionsRepo: Repository<Transaction>,
     private readonly dataSource: DataSource,
     private readonly walletsService: WalletsService,
+    private readonly notifications: NotificationsService,
   ) {
     super();
   }
@@ -75,6 +77,9 @@ export class TransactionsProcessor extends WorkerHost {
         verifiedAt: new Date(),
       });
     });
+
+    // Best-effort push; never awaited into the job's success/failure.
+    void this.notifications.notifyTransaction(transaction, 'CREDIT_RECEIVED');
   }
 
   // BullMQ retries `process()` per the job's attempts/backoff (set at

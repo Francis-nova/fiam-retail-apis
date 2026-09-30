@@ -18,6 +18,7 @@ import { WalletsService } from '../wallets/wallets.service';
 import { AddressService } from '../wallets/address.service';
 import { BeneficiariesService } from '../beneficiaries/beneficiaries.service';
 import { BanksService } from '../banks/banks.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { PAYMENT_PROVIDER_REGISTRY } from '../providers/payment-provider.registry';
 import type { PaymentProviderRegistry } from '../providers/payment-provider.registry';
 import type {
@@ -51,6 +52,7 @@ export class PayoutsService {
     private readonly addressService: AddressService,
     private readonly beneficiariesService: BeneficiariesService,
     private readonly banksService: BanksService,
+    private readonly notifications: NotificationsService,
     @Inject(PAYMENT_PROVIDER_REGISTRY)
     private readonly registry: PaymentProviderRegistry,
     @InjectQueue(PAYOUT_STATUS_QUERY_QUEUE)
@@ -282,6 +284,10 @@ export class PayoutsService {
         status: TransactionStatus.SUCCESSFUL,
         verifiedAt: new Date(),
       });
+      void this.notifications.notifyTransaction(
+        transaction,
+        'PAYOUT_SUCCESSFUL',
+      );
     } else if (result.outcome === 'FAILED') {
       await this.reverseFailedPayout(transaction.id);
     } else if (result.outcome === 'HOLD') {
@@ -320,6 +326,7 @@ export class PayoutsService {
   // FAILED outcome. Idempotent against duplicate/racing calls — re-reads
   // the transaction inside the lock and no-ops if it's already terminal.
   async reverseFailedPayout(transactionId: string): Promise<void> {
+    let reversed: Transaction | null = null;
     await this.dataSource.transaction(async (manager) => {
       const transaction = await manager.findOne(Transaction, {
         where: { id: transactionId },
@@ -367,9 +374,15 @@ export class PayoutsService {
           verifiedAt: new Date(),
         }),
       );
+      reversed = transaction;
       this.logger.warn(
         `Reversed failed payout ${transaction.reference} (transaction ${transaction.id})`,
       );
     });
+    // After the commit, so a push can never describe a reversal that then
+    // rolled back.
+    if (reversed) {
+      void this.notifications.notifyTransaction(reversed, 'PAYOUT_FAILED');
+    }
   }
 }

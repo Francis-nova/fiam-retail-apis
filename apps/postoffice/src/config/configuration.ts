@@ -12,6 +12,12 @@ export interface PostofficeConfig {
       baseUrl: string;
     };
   };
+  push: {
+    onesignal: {
+      appId: string;
+      restApiKey: string;
+    };
+  };
   email: {
     provider: string;
     fromAddress: string;
@@ -35,6 +41,12 @@ export default (): PostofficeConfig => ({
       apiKey: process.env.TERMII_API_KEY ?? '',
       senderId: process.env.TERMII_SENDER_ID ?? '',
       baseUrl: process.env.TERMII_BASE_URL ?? 'https://api.ng.termii.com',
+    },
+  },
+  push: {
+    onesignal: {
+      appId: process.env.ONESIGNAL_APP_ID ?? '',
+      restApiKey: process.env.ONESIGNAL_REST_API_KEY ?? '',
     },
   },
   email: {

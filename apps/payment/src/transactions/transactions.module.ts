@@ -8,6 +8,7 @@ import { TransactionsController } from './transactions.controller';
 import { TRANSACTION_PROCESSING_QUEUE } from './transaction-processing.queue';
 import { WalletsModule } from '../wallets/wallets.module';
 import { PaymentAuthModule } from '../auth/payment-auth.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { PaymentAuthModule } from '../auth/payment-auth.module';
     BullModule.registerQueue({ name: TRANSACTION_PROCESSING_QUEUE }),
     WalletsModule,
     PaymentAuthModule,
+    NotificationsModule,
   ],
   controllers: [TransactionsController],
   providers: [TransactionsService, TransactionsProcessor],

@@ -10,6 +10,7 @@ import {
   TransactionStatus,
 } from '../transactions/entities/transaction.entity';
 import { PayoutsService } from './payouts.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import {
   PAYOUT_STATUS_QUERY_QUEUE,
   PayoutStatusQueryJobData,
@@ -25,6 +26,7 @@ export class PayoutStatusQueryProcessor extends WorkerHost {
     @Inject(PAYMENT_PROVIDER_REGISTRY)
     private readonly registry: PaymentProviderRegistry,
     private readonly payoutsService: PayoutsService,
+    private readonly notifications: NotificationsService,
   ) {
     super();
   }
@@ -64,6 +66,10 @@ export class PayoutStatusQueryProcessor extends WorkerHost {
         status: TransactionStatus.SUCCESSFUL,
         verifiedAt: new Date(),
       });
+      void this.notifications.notifyTransaction(
+        transaction,
+        'PAYOUT_SUCCESSFUL',
+      );
       return;
     }
     if (result.outcome === 'FAILED') {
