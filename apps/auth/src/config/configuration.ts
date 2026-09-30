@@ -26,6 +26,8 @@ export interface AuthConfig {
       clientId: string;
       secret: string;
       baseUrl: string;
+      livenessClientId: string;
+      livenessSecret: string;
     };
   };
   minio: {
@@ -69,6 +71,10 @@ export default (): AuthConfig => ({
       clientId: process.env.QOREID_CLIENT_ID ?? '',
       secret: process.env.QOREID_SECRET ?? '',
       baseUrl: process.env.QOREID_BASE_URL ?? 'https://api.qoreid.com',
+      // Separate QoreID project for the `liveness_nin` SDK session — product
+      // entitlements are per-project. Falls back to the main pair if unset.
+      livenessClientId: process.env.QOREID_LIVENESS_CLIENT_ID ?? '',
+      livenessSecret: process.env.QOREID_LIVENESS_SECRET ?? '',
     },
   },
   minio: {

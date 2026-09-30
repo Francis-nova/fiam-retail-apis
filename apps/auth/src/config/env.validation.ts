@@ -18,6 +18,8 @@ interface EnvVars {
   QOREID_CLIENT_ID: string;
   QOREID_SECRET: string;
   QOREID_BASE_URL: string;
+  QOREID_LIVENESS_CLIENT_ID: string;
+  QOREID_LIVENESS_SECRET: string;
   MINIO_ENDPOINT: string;
   MINIO_PORT: number;
   MINIO_USE_SSL: 'true' | 'false';
@@ -49,6 +51,8 @@ export const envSchema = Joi.object<EnvVars>({
   QOREID_CLIENT_ID: Joi.string().allow('').default(''),
   QOREID_SECRET: Joi.string().allow('').default(''),
   QOREID_BASE_URL: Joi.string().uri().default('https://api.qoreid.com'),
+  QOREID_LIVENESS_CLIENT_ID: Joi.string().allow('').default(''),
+  QOREID_LIVENESS_SECRET: Joi.string().allow('').default(''),
   // MinIO — same "optional at boot" pattern as the SMS/KYC creds above: KYC
   // document upload is the only thing that needs these, so the rest of the
   // service keeps working before a local MinIO instance/credentials exist.

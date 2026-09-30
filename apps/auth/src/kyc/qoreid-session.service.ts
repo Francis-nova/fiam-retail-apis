@@ -42,12 +42,15 @@ export class QoreIdSessionService {
     productCode: string,
     reference: string,
   ): Promise<QoreIdSessionResponse> {
-    const { clientId, secret, baseUrl } = this.configService.get('kyc.qoreid', {
-      infer: true,
-    });
+    const qoreid = this.configService.get('kyc.qoreid', { infer: true });
+    // Sessions are only minted for the liveness product, which may live on
+    // its own QoreID project — prefer that pair, else the main one.
+    const clientId = qoreid.livenessClientId || qoreid.clientId;
+    const secret = qoreid.livenessSecret || qoreid.secret;
+    const { baseUrl } = qoreid;
     if (!clientId || !secret) {
       throw new ServiceUnavailableException(
-        'Identity verification is not configured (missing QOREID_CLIENT_ID / QOREID_SECRET)',
+        'Identity verification is not configured (missing QOREID_LIVENESS_CLIENT_ID / QOREID_LIVENESS_SECRET)',
       );
     }
     const basic = Buffer.from(`${clientId}:${secret}`).toString('base64');
