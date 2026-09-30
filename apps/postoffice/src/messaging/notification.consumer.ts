@@ -50,7 +50,7 @@ export class NotificationConsumer {
           break;
         default:
           this.logger.warn(
-            `No handler yet for channel "${message.channel}" (template: ${message.template})`,
+            `No handler yet for channel "${String(message.channel)}" (template: ${message.template})`,
           );
       }
       channel.ack(originalMsg);
