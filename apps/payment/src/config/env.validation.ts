@@ -1,7 +1,27 @@
 import * as Joi from 'joi';
 import { validateEnv } from '@app/common';
 
-export const envSchema = Joi.object({
+interface EnvVars {
+  [key: string]: unknown;
+  NODE_ENV: 'development' | 'test' | 'production';
+  PAYMENT_PORT: number;
+  PAYMENT_DATABASE_URL: string;
+  RABBITMQ_URL: string;
+  REDIS_URL: string;
+  JWT_ACCESS_SECRET: string;
+  AUTH_INTERNAL_URL: string;
+  INTERNAL_API_KEY: string;
+  PAYMENT_PROVIDER_NGN: 'vfd';
+  VFD_AUTH_BASE_URL: string;
+  VFD_WALLET_BASE_URL: string;
+  VFD_CONSUMER_KEY: string;
+  VFD_CONSUMER_SECRET: string;
+  VFD_WEBHOOK_SECRET: string;
+  VFD_BANK_CODE: string;
+  VFD_WALLET_NAME: string;
+}
+
+export const envSchema = Joi.object<EnvVars>({
   NODE_ENV: Joi.string()
     .valid('development', 'test', 'production')
     .default('development'),
@@ -17,6 +37,11 @@ export const envSchema = Joi.object({
   // provider credential that's ok to be blank), since without it every
   // authenticated payment endpoint would be unreachable.
   JWT_ACCESS_SECRET: Joi.string().min(32).required(),
+  // Where to reach apps/auth for internal lookups, and the shared secret it
+  // expects (same INTERNAL_API_KEY as apps/auth). Blank key = transaction
+  // emails are skipped (push still works).
+  AUTH_INTERNAL_URL: Joi.string().uri().default('http://localhost:7001'),
+  INTERNAL_API_KEY: Joi.string().min(32).allow('').default(''),
   PAYMENT_PROVIDER_NGN: Joi.string().valid('vfd').default('vfd'),
   // VFD credentials are intentionally optional at boot, same convention as
   // Termii/QoreID in apps/auth — the provider throws a clear 503 if invoked
@@ -38,7 +63,7 @@ export const envSchema = Joi.object({
   // Prefixes every /transfer reference (VFD requires "wallet name" prefixed
   // references) — safe to default in dev, should be set explicitly for a
   // real registered wallet name in production.
-  VFD_WALLET_NAME: Joi.string().default('FiamWallet'),
+  VFD_WALLET_NAME: Joi.string().default('ADL'),
 });
 
 export function validate(config: Record<string, unknown>) {

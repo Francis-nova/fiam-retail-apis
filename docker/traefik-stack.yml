@@ -1,0 +1,65 @@
+# One-time reverse proxy setup for the Hetzner box. Deployed once and left
+# running; the app stack (stack.yml) is what gets redeployed on every
+# release. Terminates TLS (Let's Encrypt via HTTP-01) and routes
+# api.auth.staging.usefiam.com / api.payment.staging.usefiam.com to the
+# matching service in the app stack over the shared `edge` overlay network.
+#
+# One-time setup, on the server:
+#   docker swarm init                                   # if not already a swarm
+#   docker network create --driver overlay --attachable edge
+#   cd docker && echo "ACME_EMAIL=you@usefiam.com" > .env
+#   set -a && . ./.env && set +a && docker stack deploy -c traefik-stack.yml traefik
+# (`docker stack deploy` has no --env-file flag and, unlike `docker
+# compose`, does NOT auto-load a `.env` file either — confirmed on the
+# server: ${VAR} substitution silently resolves to empty without this,
+# no error. `source`ing the file into the shell first is what actually
+# works.)
+
+version: '3.8'
+
+services:
+  traefik:
+    # Docker 29 raised its minimum supported API version to 1.44; Traefik
+    # <3.6 hardcodes API 1.24 for the Swarm provider with no negotiation
+    # (DOCKER_API_VERSION doesn't help — confirmed on this box). v3.6 added
+    # proper auto-negotiation. See traefik/traefik#12253.
+    image: traefik:v3.6
+    command:
+      # Traefik v3 replaced the v2 `providers.docker.swarmMode` flag with a
+      # dedicated Swarm provider — the old flag just fails to start ("option
+      # has been removed in v3").
+      - --providers.swarm.endpoint=unix:///var/run/docker.sock
+      - --providers.swarm.exposedByDefault=false
+      - --providers.swarm.network=edge
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - --certificatesresolvers.le.acme.email=${ACME_EMAIL}
+      - --certificatesresolvers.le.acme.storage=/letsencrypt/acme.json
+      - --certificatesresolvers.le.acme.httpchallenge.entrypoint=web
+    ports:
+      - target: 80
+        published: 80
+        mode: host
+      - target: 443
+        published: 443
+        mode: host
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik-certs:/letsencrypt
+    networks:
+      - edge
+    deploy:
+      placement:
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: on-failure
+
+networks:
+  edge:
+    external: true
+
+volumes:
+  traefik-certs:

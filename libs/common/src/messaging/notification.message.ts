@@ -15,7 +15,8 @@ export enum NotificationChannel {
 export interface NotificationRequestedMessage {
   messageId: string;
   channel: NotificationChannel;
-  // Email address, phone number (E.164), or push device token, depending
+  // Email address, phone number (E.164), or — for push — the customer's user
+  // id (devices are registered with the push provider under it), depending
   // on `channel`.
   recipient: string;
   // Named template key (e.g. 'otp-code', 'transaction-receipt') — postoffice
@@ -23,4 +24,13 @@ export interface NotificationRequestedMessage {
   template: string;
   data: Record<string, string>;
   requestedAt: string; // ISO timestamp
+}
+
+// Push templates postoffice can render (title + body copy). Callers send the
+// key and the raw data; postoffice owns the wording and number formatting.
+export enum PushTemplate {
+  // data: { amount, transactionId }
+  MONEY_RECEIVED = 'push-money-received',
+  PAYOUT_SUCCESSFUL = 'push-payout-successful',
+  PAYOUT_FAILED = 'push-payout-failed',
 }

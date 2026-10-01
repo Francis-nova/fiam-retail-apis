@@ -20,6 +20,12 @@ export interface PaymentConfig {
   jwt: {
     accessSecret: string;
   };
+  // How this service reaches apps/auth for internal lookups (e.g. a
+  // customer's email for transaction receipts).
+  auth: {
+    internalUrl: string;
+    internalApiKey: string;
+  };
   payments: {
     // Raw config strings (e.g. 'vfd'), same lowercase convention as
     // SMS_PROVIDER/KYC_PROVIDER — mapped to PaymentProviderKey by
@@ -59,6 +65,10 @@ export default (): PaymentConfig => ({
   jwt: {
     accessSecret: process.env.JWT_ACCESS_SECRET as string,
   },
+  auth: {
+    internalUrl: process.env.AUTH_INTERNAL_URL ?? 'http://localhost:7001',
+    internalApiKey: process.env.INTERNAL_API_KEY ?? '',
+  },
   payments: {
     // Extensible: PAYMENT_PROVIDER_USD, PAYMENT_PROVIDER_GBP, etc. join this
     // map when those currencies launch — one env var + one entry.
@@ -77,6 +87,6 @@ export default (): PaymentConfig => ({
     consumerSecret: process.env.VFD_CONSUMER_SECRET ?? '',
     webhookSecret: process.env.VFD_WEBHOOK_SECRET ?? '',
     bankCode: process.env.VFD_BANK_CODE ?? '999999',
-    walletName: process.env.VFD_WALLET_NAME ?? 'FiamWallet',
+    walletName: process.env.VFD_WALLET_NAME ?? 'ADL',
   },
 });

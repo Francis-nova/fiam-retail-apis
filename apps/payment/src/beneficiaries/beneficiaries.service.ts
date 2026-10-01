@@ -4,6 +4,19 @@ import { Repository } from 'typeorm';
 import { CurrencyCode } from '@app/common';
 import { PaymentProviderKey } from '../wallets/entities/address.entity';
 import { Beneficiary } from './entities/beneficiary.entity';
+import {
+  Transaction,
+  TransactionStatus,
+  TransactionType,
+} from '../transactions/entities/transaction.entity';
+
+// A recipient the user has actually transferred to, with how often and when
+// they last did.
+export interface RecentBeneficiary {
+  beneficiary: Beneficiary;
+  transferCount: number;
+  lastTransferAt: Date;
+}
 
 export interface UpsertBeneficiaryInput {
   userId: string;
@@ -22,11 +35,34 @@ export class BeneficiariesService {
     private readonly beneficiariesRepo: Repository<Beneficiary>,
   ) {}
 
-  findAllForUser(userId: string): Promise<Beneficiary[]> {
-    return this.beneficiariesRepo.find({
-      where: { userId },
-      order: { updatedAt: 'DESC' },
-    });
+  // Every distinct account this user has transferred to, most recent
+  // first. A beneficiary row is saved as soon as a payout is *initiated*
+  // (before the money moves), so this only counts recipients with at least
+  // one non-FAILED DEBIT — an attempt that failed doesn't make someone a
+  // "recent recipient".
+  async findAllForUser(userId: string): Promise<RecentBeneficiary[]> {
+    const { raw, entities } = await this.beneficiariesRepo
+      .createQueryBuilder('b')
+      .innerJoin(
+        Transaction,
+        't',
+        't.beneficiaryId = b.id AND t.type = :debit AND t.status != :failed',
+        { debit: TransactionType.DEBIT, failed: TransactionStatus.FAILED },
+      )
+      .addSelect('COUNT(t.id)', 'transfer_count')
+      .addSelect('MAX(t.createdAt)', 'last_transfer_at')
+      .where('b.userId = :userId', { userId })
+      .groupBy('b.id')
+      .orderBy('MAX(t.createdAt)', 'DESC')
+      .getRawAndEntities<{
+        transfer_count: string;
+        last_transfer_at: Date;
+      }>();
+    return entities.map((beneficiary, i) => ({
+      beneficiary,
+      transferCount: Number(raw[i].transfer_count),
+      lastTransferAt: new Date(raw[i].last_transfer_at),
+    }));
   }
 
   async findOwnedById(userId: string, id: string): Promise<Beneficiary> {

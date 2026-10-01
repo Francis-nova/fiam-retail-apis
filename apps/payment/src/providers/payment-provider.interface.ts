@@ -48,7 +48,12 @@ export interface ProviderTransferRecipient {
 }
 
 export interface ProviderInitiateTransferInput {
+  // The account funds are actually disbursed from — for a pool
+  // implementation (VFD), this is the pool account, not the customer's.
   from: ProviderAccountDetails;
+  // Provider-side id of the customer's own (sub-)account, so the receiving
+  // bank/recipient can see who the real sender is. Null when not applicable.
+  senderAccountId?: string | null;
   to: ProviderTransferRecipient;
   bankCode: string;
   transferType: ProviderTransferType;
@@ -57,11 +62,12 @@ export interface ProviderInitiateTransferInput {
   narration: string;
 }
 
-// A payout resolves to exactly one of these three outcomes, regardless of
+// A payout resolves to exactly one of these outcomes, regardless of
 // provider: definitively succeeded, definitively failed (safe to reverse
-// our own ledger hold), or unresolved (must be re-verified — never assumed
-// either way).
-export type TransferOutcome = 'SUCCESSFUL' | 'FAILED' | 'REQUERY';
+// our own ledger hold), definitively failed but the provider says NOT to
+// reverse (HOLD — funds stay held for manual review), or unresolved (must
+// be re-verified — never assumed either way).
+export type TransferOutcome = 'SUCCESSFUL' | 'FAILED' | 'HOLD' | 'REQUERY';
 
 export interface ProviderTransferResult {
   outcome: TransferOutcome;
@@ -75,6 +81,10 @@ export interface PaymentProvider {
   readonly key: PaymentProviderKey;
   createAccount(applicant: ProviderAccountApplicant): Promise<ProviderAccount>;
   listBanks(): Promise<ProviderBank[]>;
+  // Whether a payout to this destination bank stays inside the provider
+  // (intra) or goes out to another bank (inter). Provider-specific: for VFD,
+  // destination bank code 999999 is VFD-to-VFD.
+  resolveTransferType(bankCode: string): ProviderTransferType;
   getAccountDetails(accountNumber?: string): Promise<ProviderAccountDetails>;
   lookupTransferRecipient(
     input: ProviderTransferRecipientInput,

@@ -28,6 +28,8 @@
     "migration:revert:auth": "npm run typeorm -- migration:revert -d apps/auth/src/database/data-source.ts",
     "migration:generate:payment": "npm run typeorm -- migration:generate -d apps/payment/src/database/data-source.ts",
     "migration:run:payment": "npm run typeorm -- migration:run -d apps/payment/src/database/data-source.ts",
+    "migration:run:auth:prod": "typeorm migration:run -d dist/apps/auth/apps/auth/src/database/data-source.js",
+    "migration:run:payment:prod": "typeorm migration:run -d dist/apps/payment/apps/payment/src/database/data-source.js",
     "migration:revert:payment": "npm run typeorm -- migration:revert -d apps/payment/src/database/data-source.ts"
   },
   "dependencies": {
@@ -48,6 +50,7 @@
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
     "decimal.js": "^10.6.0",
+    "dotenv": "^17.4.2",
     "ioredis": "^5.11.1",
     "joi": "^18.2.3",
     "minio": "^8.0.6",
@@ -75,7 +78,6 @@
     "@types/pug": "^2.0.10",
     "@types/supertest": "^7.0.0",
     "concurrently": "^10.0.5",
-    "dotenv": "^17.4.2",
     "eslint": "^9.18.0",
     "eslint-config-prettier": "^10.0.1",
     "eslint-plugin-prettier": "^5.2.2",

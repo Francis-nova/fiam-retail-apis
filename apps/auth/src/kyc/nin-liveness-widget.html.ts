@@ -51,10 +51,7 @@ export const NIN_LIVENESS_WIDGET_HTML = `<!DOCTYPE html>
     if (el) el.textContent = text;
   }
 
-  if (!token || !window.QoreIdSDK) {
-    setStatus('Unable to start verification. Close this and try again.');
-    post('error', { message: 'Missing token or SDK failed to load' });
-  } else {
+  function startSdk() {
     try {
       window.QoreIdSDK.init({
         token: token,
@@ -79,6 +76,28 @@ export const NIN_LIVENESS_WIDGET_HTML = `<!DOCTYPE html>
       setStatus('Something went wrong starting verification.');
       post('error', { message: String(e && e.message ? e.message : e) });
     }
+  }
+
+  window.onerror = function (msg) { post('log', { message: String(msg) }); };
+
+  if (!token || !window.QoreIdSDK) {
+    setStatus('Unable to start verification. Close this and try again.');
+    post('error', { message: 'Missing token or SDK failed to load' });
+  } else if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    // Not a secure context (plain http) or an old WebView — the SDK's own
+    // "securing camera feed" step would hang here, so fail loudly instead.
+    setStatus('Camera is not available in this view.');
+    post('error', { message: 'navigator.mediaDevices unavailable (insecure context or old WebView)' });
+  } else {
+    // Pre-flight the camera ourselves so a permission/device failure surfaces
+    // as a precise error instead of the SDK hanging on "securing camera feed".
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } }).then(function (stream) {
+      stream.getTracks().forEach(function (t) { t.stop(); });
+      startSdk();
+    }).catch(function (e) {
+      setStatus('Camera access was blocked.');
+      post('error', { message: 'Camera pre-flight failed: ' + (e && e.name ? e.name : '') + ' ' + (e && e.message ? e.message : e) });
+    });
   }
 </script>
 </body>

@@ -1,7 +1,36 @@
 import * as Joi from 'joi';
 import { validateEnv } from '@app/common';
 
-export const envSchema = Joi.object({
+interface EnvVars {
+  [key: string]: unknown;
+  NODE_ENV: 'development' | 'test' | 'production';
+  AUTH_PORT: number;
+  AUTH_DATABASE_URL: string;
+  JWT_ACCESS_SECRET: string;
+  JWT_ACCESS_TTL: string;
+  JWT_REFRESH_SECRET: string;
+  JWT_REFRESH_TTL: string;
+  OTP_TTL_SECONDS: number;
+  OTP_LENGTH: number;
+  OTP_MAX_ATTEMPTS: number;
+  OTP_RESEND_COOLDOWN_SECONDS: number;
+  KYC_PROVIDER: 'qoreid' | 'passthrough';
+  QOREID_CLIENT_ID: string;
+  QOREID_SECRET: string;
+  QOREID_BASE_URL: string;
+  INTERNAL_API_KEY: string;
+  QOREID_LIVENESS_CLIENT_ID: string;
+  QOREID_LIVENESS_SECRET: string;
+  MINIO_ENDPOINT: string;
+  MINIO_PORT: number;
+  MINIO_USE_SSL: 'true' | 'false';
+  MINIO_ACCESS_KEY: string;
+  MINIO_SECRET_KEY: string;
+  MINIO_BUCKET: string;
+  RABBITMQ_URL: string;
+}
+
+export const envSchema = Joi.object<EnvVars>({
   NODE_ENV: Joi.string()
     .valid('development', 'test', 'production')
     .default('development'),
@@ -19,10 +48,13 @@ export const envSchema = Joi.object({
   // the rest of the auth service (register/login) must keep working in
   // dev/demo before real QoreID keys are provisioned. The provider itself
   // throws a clear error if invoked without a key configured.
-  KYC_PROVIDER: Joi.string().valid('qoreid').default('qoreid'),
+  KYC_PROVIDER: Joi.string().valid('qoreid', 'passthrough').default('qoreid'),
   QOREID_CLIENT_ID: Joi.string().allow('').default(''),
   QOREID_SECRET: Joi.string().allow('').default(''),
   QOREID_BASE_URL: Joi.string().uri().default('https://api.qoreid.com'),
+  INTERNAL_API_KEY: Joi.string().min(32).allow('').default(''),
+  QOREID_LIVENESS_CLIENT_ID: Joi.string().allow('').default(''),
+  QOREID_LIVENESS_SECRET: Joi.string().allow('').default(''),
   // MinIO — same "optional at boot" pattern as the SMS/KYC creds above: KYC
   // document upload is the only thing that needs these, so the rest of the
   // service keeps working before a local MinIO instance/credentials exist.

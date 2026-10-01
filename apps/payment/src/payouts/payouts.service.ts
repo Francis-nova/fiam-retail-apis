@@ -1,4 +1,4 @@
-import { randomBytes } from 'crypto';
+import { randomInt } from 'crypto';
 import {
   BadRequestException,
   Inject,
@@ -18,6 +18,7 @@ import { WalletsService } from '../wallets/wallets.service';
 import { AddressService } from '../wallets/address.service';
 import { BeneficiariesService } from '../beneficiaries/beneficiaries.service';
 import { BanksService } from '../banks/banks.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { PAYMENT_PROVIDER_REGISTRY } from '../providers/payment-provider.registry';
 import type { PaymentProviderRegistry } from '../providers/payment-provider.registry';
 import type {
@@ -51,6 +52,7 @@ export class PayoutsService {
     private readonly addressService: AddressService,
     private readonly beneficiariesService: BeneficiariesService,
     private readonly banksService: BanksService,
+    private readonly notifications: NotificationsService,
     @Inject(PAYMENT_PROVIDER_REGISTRY)
     private readonly registry: PaymentProviderRegistry,
     @InjectQueue(PAYOUT_STATUS_QUERY_QUEUE)
@@ -59,10 +61,9 @@ export class PayoutsService {
   ) {}
 
   private transferType(bankCode: string): ProviderTransferType {
-    const { bankCode: ownBankCode } = this.configService.get('vfd', {
-      infer: true,
-    });
-    return bankCode === ownBankCode ? 'intra' : 'inter';
+    return this.registry
+      .getProviderForCurrency(CurrencyCode.NGN)
+      .resolveTransferType(bankCode);
   }
 
   // Read-only name enquiry — lets the client confirm "paying <NAME>" before
@@ -156,7 +157,12 @@ export class PayoutsService {
     // Both fresh per VFD's own documented golden path — the recipient's
     // clientId/accountId/session can be short-lived, so this is never read
     // from the saved Beneficiary row.
-    const [fromDetails, recipient] = await Promise.all([
+    // VFD runs as a pool: money leaves the pool account (no account number
+    // passed to enquiry), and the customer's sub-account is only identified
+    // as uniqueSenderAccountId. Sending from the customer's own VFD account
+    // is rejected with 99 "Invalid source".
+    const [fromDetails, senderDetails, recipient] = await Promise.all([
+      provider.getAccountDetails(),
       provider.getAccountDetails(address.providerAccountNumber),
       provider.lookupTransferRecipient({
         accountNumber,
@@ -172,7 +178,7 @@ export class PayoutsService {
       recipient,
     );
 
-    const reference = `${walletName}-${randomBytes(10).toString('hex')}`;
+    const reference = await this.generateReference(walletName, provider.key);
 
     const transaction = await this.dataSource.transaction(async (manager) => {
       // Debits amount + fee together — the fee is a platform charge on top
@@ -204,6 +210,7 @@ export class PayoutsService {
 
     const result = await provider.initiateTransfer({
       from: fromDetails,
+      senderAccountId: senderDetails.accountId || null,
       to: recipient,
       bankCode,
       transferType,
@@ -213,6 +220,24 @@ export class PayoutsService {
     });
 
     return this.applyTransferResult(transaction, result);
+  }
+
+  // "ADL007884944": wallet-name prefix (which VFD requires on every transfer
+  // reference) followed by 9 random digits. The space is small (10^9), so a
+  // clash with an existing reference is checked for and retried rather than
+  // left to fail the debit on the unique index.
+  private async generateReference(
+    walletName: string,
+    provider: Transaction['provider'],
+  ): Promise<string> {
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const digits = String(randomInt(0, 1_000_000_000)).padStart(9, '0');
+      const reference = `${walletName}${digits}`;
+      if (!(await this.transactionsRepo.existsBy({ provider, reference }))) {
+        return reference;
+      }
+    }
+    throw new Error('Could not generate a unique transaction reference');
   }
 
   private async saveBeneficiary(
@@ -259,8 +284,14 @@ export class PayoutsService {
         status: TransactionStatus.SUCCESSFUL,
         verifiedAt: new Date(),
       });
+      void this.notifications.notifyTransaction(
+        transaction,
+        'PAYOUT_SUCCESSFUL',
+      );
     } else if (result.outcome === 'FAILED') {
       await this.reverseFailedPayout(transaction.id);
+    } else if (result.outcome === 'HOLD') {
+      this.holdForReview(transaction, result.providerStatusCode);
     } else {
       // REQUERY — VFD's response was ambiguous or unreachable; never guess,
       // poll TSQ until it resolves. ~10 attempts with exponential backoff
@@ -278,10 +309,24 @@ export class PayoutsService {
     return this.transactionsRepo.findOneByOrFail({ id: transaction.id });
   }
 
+  // The provider failed the transfer but instructs us NOT to reverse it
+  // (e.g. suspected fraud). The customer's debit stays in place and the
+  // transaction is left PROCESSING — never auto-refunded, never retried —
+  // until someone reconciles it with the provider's support.
+  holdForReview(
+    transaction: Pick<Transaction, 'id' | 'reference'>,
+    providerStatusCode: string | null,
+  ): void {
+    this.logger.error(
+      `Payout ${transaction.reference} (transaction ${transaction.id}) failed with provider code ${providerStatusCode ?? 'unknown'} and a NO-REVERSAL instruction — funds held, needs manual review with the provider`,
+    );
+  }
+
   // Public: also called by PayoutStatusQueryProcessor once TSQ confirms a
   // FAILED outcome. Idempotent against duplicate/racing calls — re-reads
   // the transaction inside the lock and no-ops if it's already terminal.
   async reverseFailedPayout(transactionId: string): Promise<void> {
+    let reversed: Transaction | null = null;
     await this.dataSource.transaction(async (manager) => {
       const transaction = await manager.findOne(Transaction, {
         where: { id: transactionId },
@@ -329,9 +374,15 @@ export class PayoutsService {
           verifiedAt: new Date(),
         }),
       );
+      reversed = transaction;
       this.logger.warn(
         `Reversed failed payout ${transaction.reference} (transaction ${transaction.id})`,
       );
     });
+    // After the commit, so a push can never describe a reversal that then
+    // rolled back.
+    if (reversed) {
+      void this.notifications.notifyTransaction(reversed, 'PAYOUT_FAILED');
+    }
   }
 }

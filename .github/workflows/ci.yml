@@ -33,4 +33,115 @@ jobs:
 
       - run: npm ci
 
+      - run: npm run lint
+
       - run: npm run build
+
+  docker:
+    needs: [lint, build]
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute lowercase image name
+        run: echo "IMAGE=ghcr.io/$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')/fiam-retail-apis" >> "$GITHUB_ENV"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:${{ github.ref_name }}
+            ${{ env.IMAGE }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy-staging:
+    needs: [docker]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/staging'
+    runs-on: ubuntu-latest
+    environment: staging
+    concurrency:
+      group: deploy-staging
+      cancel-in-progress: false
+    steps:
+      - name: Compute lowercase image name
+        run: echo "IMAGE=ghcr.io/$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')/fiam-retail-apis" >> "$GITHUB_ENV"
+
+      - name: Configure SSH
+        run: |
+          install -m 700 -d ~/.ssh
+          echo "${{ secrets.STAGING_SSH_KEY }}" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          echo "${{ secrets.STAGING_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+
+      # Runs the compiled TypeORM migrations from the just-pushed image as a
+      # one-shot Swarm job on the internal network (a plain `docker run` can't
+      # join it — see docker/README.md step 7). DB URLs are read from the
+      # already-running services' env so no secrets are duplicated in CI.
+      - name: Run migrations
+        run: |
+          ssh -i ~/.ssh/id_deploy -o IdentitiesOnly=yes \
+            "${{ secrets.STAGING_SSH_USER }}@${{ secrets.STAGING_SSH_HOST }}" \
+            bash -s <<'REMOTE'
+          set -euo pipefail
+          for app in auth payment; do
+            name="migrate-${app}-${{ github.run_id }}"
+            var="$(echo "$app" | tr a-z A-Z)_DATABASE_URL"
+            db_url=$(docker service inspect "fiam_${app}" \
+              --format '{{range .Spec.TaskTemplate.ContainerSpec.Env}}{{println .}}{{end}}' \
+              | grep "^${var}=" | cut -d= -f2-)
+            [ -n "$db_url" ] || { echo "could not read $var from fiam_${app}" >&2; exit 1; }
+            status=0
+            # The runtime image has no package.json (so no `npm run`) — call
+            # the TypeORM CLI against the compiled data source directly.
+            # `timeout` stops a crash-looping job from hanging the deploy.
+            timeout 300 docker service create --detach=false --name "$name" \
+              --mode replicated-job --network fiam_internal \
+              --restart-condition none \
+              --env "${var}=${db_url}" \
+              "${{ env.IMAGE }}:${{ github.sha }}" \
+              node node_modules/typeorm/cli.js migration:run \
+              -d "dist/apps/${app}/apps/${app}/src/database/data-source.js" || status=$?
+            docker service logs "$name" --no-trunc 2>&1 | tail -n 40 || true
+            docker service rm "$name" >/dev/null
+            [ "$status" -eq 0 ] || { echo "migrations for $app failed" >&2; exit 1; }
+          done
+          REMOTE
+
+      # Rolls each service to the immutable :<sha> tag (not :staging) so Swarm
+      # always sees a changed image. The GHCR package is public, so no
+      # registry login is needed. --detach=false blocks until the rollout converges
+      # and fails the job if Swarm rolls back (stack.yml sets
+      # failure_action: rollback, start-first).
+      # Migrations run first (previous step), so new code never meets an
+      # unmigrated schema; if a migration fails the job stops before any
+      # service rolls.
+      - name: Roll out image
+        run: |
+          ssh -i ~/.ssh/id_deploy -o IdentitiesOnly=yes \
+            "${{ secrets.STAGING_SSH_USER }}@${{ secrets.STAGING_SSH_HOST }}" \
+            bash -s <<'REMOTE'
+          set -euo pipefail
+          for svc in auth payment postoffice; do
+            docker service update --detach=false \
+              --image "${{ env.IMAGE }}:${{ github.sha }}" "fiam_${svc}"
+            state=$(docker service inspect "fiam_${svc}" --format '{{.UpdateStatus.State}}')
+            if [ "$state" != "completed" ]; then
+              echo "fiam_${svc} update ended in state: $state" >&2
+              exit 1
+            fi
+          done
+          REMOTE

@@ -5,6 +5,7 @@ import { AuthConfig } from '../config/configuration';
 import { BVN_PROVIDER } from './bvn-provider.interface';
 import { NIN_PROVIDER } from './nin-provider.interface';
 import { QoreIdBvnProvider } from './qoreid-bvn.provider';
+import { PassthroughBvnProvider } from './passthrough-bvn.provider';
 import { QoreIdNinProvider } from './qoreid-nin.provider';
 import { QoreIdTokenService } from './qoreid-token.service';
 import { QoreIdSessionService } from './qoreid-session.service';
@@ -31,20 +32,24 @@ import { TokensModule } from '../tokens/tokens.module';
     QoreIdTokenService,
     QoreIdSessionService,
     QoreIdBvnProvider,
+    PassthroughBvnProvider,
     QoreIdNinProvider,
     OcrService,
     KycDocumentsService,
     {
       provide: BVN_PROVIDER,
-      inject: [ConfigService, QoreIdBvnProvider],
+      inject: [ConfigService, QoreIdBvnProvider, PassthroughBvnProvider],
       useFactory: (
         configService: ConfigService<AuthConfig, true>,
         qoreid: QoreIdBvnProvider,
+        passthrough: PassthroughBvnProvider,
       ) => {
         const provider = configService.get('kyc.provider', { infer: true });
         switch (provider) {
           case 'qoreid':
             return qoreid;
+          case 'passthrough':
+            return passthrough;
           default:
             throw new Error(`Unknown KYC_PROVIDER: ${provider}`);
         }
@@ -59,7 +64,9 @@ import { TokensModule } from '../tokens/tokens.module';
       ) => {
         const provider = configService.get('kyc.provider', { infer: true });
         switch (provider) {
+          // 'passthrough' only stubs BVN; NIN keeps using QoreID.
           case 'qoreid':
+          case 'passthrough':
             return qoreid;
           default:
             throw new Error(`Unknown KYC_PROVIDER: ${provider}`);

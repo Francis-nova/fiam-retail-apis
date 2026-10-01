@@ -28,7 +28,10 @@ export class BanksService {
     const cached = await this.redis.get(cacheKey);
     if (cached) {
       try {
-        return JSON.parse(cached) as ProviderBank[];
+        const parsed = JSON.parse(cached) as ProviderBank[];
+        // An empty list is never valid — it's a stale entry from before the
+        // VFD response shape was handled, so refetch instead of serving it.
+        if (parsed.length > 0) return parsed;
       } catch {
         this.logger.warn(
           `Corrupt bank-list cache entry at ${cacheKey} — refetching`,
@@ -37,12 +40,14 @@ export class BanksService {
     }
 
     const banks = await provider.listBanks();
-    await this.redis.set(
-      cacheKey,
-      JSON.stringify(banks),
-      'EX',
-      CACHE_TTL_SECONDS,
-    );
+    if (banks.length > 0) {
+      await this.redis.set(
+        cacheKey,
+        JSON.stringify(banks),
+        'EX',
+        CACHE_TTL_SECONDS,
+      );
+    }
     return banks;
   }
 }

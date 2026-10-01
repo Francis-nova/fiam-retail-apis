@@ -1,7 +1,25 @@
 import * as Joi from 'joi';
 import { validateEnv } from '@app/common';
 
-export const envSchema = Joi.object({
+interface EnvVars {
+  [key: string]: unknown;
+  NODE_ENV: 'development' | 'test' | 'production';
+  POSTOFFICE_PORT: number;
+  RABBITMQ_URL: string;
+  SMS_PROVIDER: 'termii';
+  TERMII_API_KEY: string;
+  TERMII_SENDER_ID: string;
+  TERMII_BASE_URL: string;
+  EMAIL_PROVIDER: 'zeptomail';
+  EMAIL_FROM_ADDRESS: string;
+  EMAIL_FROM_NAME: string;
+  ZEPTOMAIL_TOKEN: string;
+  ZEPTOMAIL_BASE_URL: string;
+  ONESIGNAL_APP_ID: string;
+  ONESIGNAL_REST_API_KEY: string;
+}
+
+export const envSchema = Joi.object<EnvVars>({
   NODE_ENV: Joi.string()
     .valid('development', 'test', 'production')
     .default('development'),
@@ -26,6 +44,10 @@ export const envSchema = Joi.object({
   // e.g. "api.zeptomail.com/", and prepends the scheme itself.
   ZEPTOMAIL_TOKEN: Joi.string().allow('').default(''),
   ZEPTOMAIL_BASE_URL: Joi.string().default('api.zeptomail.com/'),
+  // Push — OneSignal. Same "optional at boot" convention: the provider
+  // throws a clear error if invoked without them.
+  ONESIGNAL_APP_ID: Joi.string().allow('').default(''),
+  ONESIGNAL_REST_API_KEY: Joi.string().allow('').default(''),
 });
 
 export function validate(config: Record<string, unknown>) {

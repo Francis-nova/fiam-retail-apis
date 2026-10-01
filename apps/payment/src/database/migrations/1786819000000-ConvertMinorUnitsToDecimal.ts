@@ -10,9 +10,7 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
 // transactions.amount_minor/fee_minor/balance_after_minor together since
 // balance_after_minor is written directly from wallets.balance_minor at
 // write time and must stay on the same unit.
-export class ConvertMinorUnitsToDecimal1786819000000
-  implements MigrationInterface
-{
+export class ConvertMinorUnitsToDecimal1786819000000 implements MigrationInterface {
   name = 'ConvertMinorUnitsToDecimal1786819000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {

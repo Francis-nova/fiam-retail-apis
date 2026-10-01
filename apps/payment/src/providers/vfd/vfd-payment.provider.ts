@@ -18,6 +18,7 @@ import {
   ProviderTransferRecipient,
   ProviderTransferRecipientInput,
   ProviderTransferResult,
+  ProviderTransferType,
 } from '../payment-provider.interface';
 import { formatDateForVfd } from './vfd-date.util';
 import { normalizeVfdBankList } from './vfd-bank-list.util';
@@ -47,12 +48,23 @@ export class VfdPaymentProvider implements PaymentProvider {
 
   private readonly logger = new Logger(VfdPaymentProvider.name);
   private cachedToken: { accessToken: string; expiresAt: number } | null = null;
+  // In-flight token request, shared by concurrent callers. VFD only honours
+  // the most recently issued token, so parallel calls each fetching their
+  // own would invalidate one another (403 "Invalid wallet token").
+  private tokenRequest: Promise<string> | null = null;
 
   constructor(
     private readonly configService: ConfigService<PaymentConfig, true>,
   ) {}
 
-  private async fetchAccessToken(): Promise<string> {
+  private fetchAccessToken(): Promise<string> {
+    this.tokenRequest ??= this.requestAccessToken().finally(() => {
+      this.tokenRequest = null;
+    });
+    return this.tokenRequest;
+  }
+
+  private async requestAccessToken(): Promise<string> {
     const { authBaseUrl, consumerKey, consumerSecret } = this.configService.get(
       'vfd',
       { infer: true },
@@ -101,6 +113,17 @@ export class VfdPaymentProvider implements PaymentProvider {
     return this.fetchAccessToken();
   }
 
+  // VFD reports a rejected/replaced token as `403 {"message":"Invalid wallet
+  // token"}` rather than a 401 — same remedy: fetch a fresh one and retry.
+  private async isInvalidWalletToken(response: Response): Promise<boolean> {
+    if (response.status !== 403) return false;
+    const body = (await response
+      .clone()
+      .json()
+      .catch(() => null)) as { message?: string } | null;
+    return /invalid wallet token/i.test(body?.message ?? '');
+  }
+
   // Shared by every VFD call site: attaches the cached token, retries once
   // with a fresh token on a 401 (cached token was rejected). Centralizing
   // this is what lets createAccount/listBanks/getAccountDetails/
@@ -116,9 +139,17 @@ export class VfdPaymentProvider implements PaymentProvider {
       headers: { ...(init.headers ?? {}), AccessToken: token },
     });
     let response = await fetch(url, withToken(accessToken));
-    if (response.status === 401) {
-      this.cachedToken = null;
-      accessToken = await this.fetchAccessToken();
+    if (
+      response.status === 401 ||
+      (await this.isInvalidWalletToken(response))
+    ) {
+      // Only discard the cache if the rejected token is still the current
+      // one — a concurrent call may already have refreshed it, and fetching
+      // yet another token would invalidate that fresh one.
+      if (this.cachedToken?.accessToken === accessToken) {
+        this.cachedToken = null;
+      }
+      accessToken = await this.getAccessToken();
       response = await fetch(url, withToken(accessToken));
     }
     return response;
@@ -201,6 +232,15 @@ export class VfdPaymentProvider implements PaymentProvider {
     throw new ServiceUnavailableException(
       'VFD account creation is currently unavailable',
     );
+  }
+
+  // 999999 = VFD's own bank code, so a destination with that code is a
+  // VFD-to-VFD (intra) transfer; anything else is inter-bank.
+  resolveTransferType(bankCode: string): ProviderTransferType {
+    const { bankCode: ownBankCode } = this.configService.get('vfd', {
+      infer: true,
+    });
+    return bankCode.trim() === ownBankCode ? 'intra' : 'inter';
   }
 
   async listBanks(): Promise<ProviderBank[]> {
@@ -319,7 +359,10 @@ export class VfdPaymentProvider implements PaymentProvider {
     // transfer type, not that the other must be blank, so both are sent.
     const payload = {
       fromAccount: input.from.accountNumber,
-      uniqueSenderAccountId: '',
+      // Pool implementation: `from*` is the pool account (VFD rejects any
+      // other source with 99 "Invalid source"); the customer's own
+      // sub-account rides along as uniqueSenderAccountId.
+      uniqueSenderAccountId: input.senderAccountId ?? '',
       fromClientId: input.from.clientId,
       fromClient: input.from.clientName,
       fromSavingsId: input.from.accountId,

@@ -41,4 +41,4 @@ async function bootstrap() {
   logger.log(`Auth API running on port ${port}`);
   logger.log(`Swagger docs available at ${await app.getUrl()}/docs`);
 }
-bootstrap();
+void bootstrap();
