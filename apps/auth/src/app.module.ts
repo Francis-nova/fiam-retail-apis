@@ -9,6 +9,7 @@ import { TokensModule } from './tokens/tokens.module';
 import { OtpModule } from './otp/otp.module';
 import { SessionsModule } from './sessions/sessions.module';
 import { AuthModule } from './auth/auth.module';
+import { InternalModule } from './internal/internal.module';
 import { HealthController } from './health/health.controller';
 
 @Module({
@@ -26,6 +27,7 @@ import { HealthController } from './health/health.controller';
     OtpModule,
     SessionsModule,
     AuthModule,
+    InternalModule,
   ],
   controllers: [HealthController],
 })

@@ -9,6 +9,8 @@ interface EnvVars {
   RABBITMQ_URL: string;
   REDIS_URL: string;
   JWT_ACCESS_SECRET: string;
+  AUTH_INTERNAL_URL: string;
+  INTERNAL_API_KEY: string;
   PAYMENT_PROVIDER_NGN: 'vfd';
   VFD_AUTH_BASE_URL: string;
   VFD_WALLET_BASE_URL: string;
@@ -35,6 +37,11 @@ export const envSchema = Joi.object<EnvVars>({
   // provider credential that's ok to be blank), since without it every
   // authenticated payment endpoint would be unreachable.
   JWT_ACCESS_SECRET: Joi.string().min(32).required(),
+  // Where to reach apps/auth for internal lookups, and the shared secret it
+  // expects (same INTERNAL_API_KEY as apps/auth). Blank key = transaction
+  // emails are skipped (push still works).
+  AUTH_INTERNAL_URL: Joi.string().uri().default('http://localhost:7001'),
+  INTERNAL_API_KEY: Joi.string().min(32).allow('').default(''),
   PAYMENT_PROVIDER_NGN: Joi.string().valid('vfd').default('vfd'),
   // VFD credentials are intentionally optional at boot, same convention as
   // Termii/QoreID in apps/auth — the provider throws a clear 503 if invoked

@@ -111,6 +111,7 @@ services:
       QOREID_BASE_URL: ${QOREID_BASE_URL:-https://api.qoreid.com}
       QOREID_LIVENESS_CLIENT_ID: ${QOREID_LIVENESS_CLIENT_ID:-}
       QOREID_LIVENESS_SECRET: ${QOREID_LIVENESS_SECRET:-}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-}
       MINIO_ENDPOINT: minio
       MINIO_PORT: 9000
       MINIO_USE_SSL: "false"
@@ -131,7 +132,7 @@ services:
       <<: *deploy-defaults
       labels:
         - traefik.enable=true
-        - traefik.http.routers.auth.rule=Host(`api.auth.staging.usefiam.com`)
+        - traefik.http.routers.auth.rule=Host(`api.auth.staging.usefiam.com`) && !PathPrefix(`/internal`)
         - traefik.http.routers.auth.entrypoints=websecure
         - traefik.http.routers.auth.tls.certresolver=le
         - traefik.http.services.auth.loadbalancer.server.port=7001
@@ -154,7 +155,9 @@ services:
       VFD_CONSUMER_SECRET: ${VFD_CONSUMER_SECRET:-}
       VFD_WEBHOOK_SECRET: ${VFD_WEBHOOK_SECRET:-}
       VFD_BANK_CODE: ${VFD_BANK_CODE:-999999}
-      VFD_WALLET_NAME: ${VFD_WALLET_NAME:-FiamWallet}
+      VFD_WALLET_NAME: ${VFD_WALLET_NAME:-ADL}
+      AUTH_INTERNAL_URL: http://auth:7001
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-}
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:7003/health"]
       interval: 30s
@@ -189,6 +192,8 @@ services:
       EMAIL_FROM_NAME: ${EMAIL_FROM_NAME:-Fiam}
       ZEPTOMAIL_TOKEN: ${ZEPTOMAIL_TOKEN:-}
       ZEPTOMAIL_BASE_URL: ${ZEPTOMAIL_BASE_URL:-api.zeptomail.com/}
+      ONESIGNAL_APP_ID: ${ONESIGNAL_APP_ID:-}
+      ONESIGNAL_REST_API_KEY: ${ONESIGNAL_REST_API_KEY:-}
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:7002/health"]
       interval: 30s

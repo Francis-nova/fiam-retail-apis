@@ -30,6 +30,9 @@ export interface AuthConfig {
       livenessSecret: string;
     };
   };
+  internal: {
+    apiKey: string;
+  };
   minio: {
     endpoint: string;
     port: number;
@@ -76,6 +79,9 @@ export default (): AuthConfig => ({
       livenessClientId: process.env.QOREID_LIVENESS_CLIENT_ID ?? '',
       livenessSecret: process.env.QOREID_LIVENESS_SECRET ?? '',
     },
+  },
+  internal: {
+    apiKey: process.env.INTERNAL_API_KEY ?? '',
   },
   minio: {
     endpoint: process.env.MINIO_ENDPOINT ?? 'localhost',

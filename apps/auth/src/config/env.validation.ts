@@ -18,6 +18,7 @@ interface EnvVars {
   QOREID_CLIENT_ID: string;
   QOREID_SECRET: string;
   QOREID_BASE_URL: string;
+  INTERNAL_API_KEY: string;
   QOREID_LIVENESS_CLIENT_ID: string;
   QOREID_LIVENESS_SECRET: string;
   MINIO_ENDPOINT: string;
@@ -51,6 +52,7 @@ export const envSchema = Joi.object<EnvVars>({
   QOREID_CLIENT_ID: Joi.string().allow('').default(''),
   QOREID_SECRET: Joi.string().allow('').default(''),
   QOREID_BASE_URL: Joi.string().uri().default('https://api.qoreid.com'),
+  INTERNAL_API_KEY: Joi.string().min(32).allow('').default(''),
   QOREID_LIVENESS_CLIENT_ID: Joi.string().allow('').default(''),
   QOREID_LIVENESS_SECRET: Joi.string().allow('').default(''),
   // MinIO — same "optional at boot" pattern as the SMS/KYC creds above: KYC
