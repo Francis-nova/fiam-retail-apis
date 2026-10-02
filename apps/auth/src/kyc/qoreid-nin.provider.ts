@@ -12,6 +12,7 @@ import {
   NinVerificationResult,
 } from './nin-provider.interface';
 import { QoreIdTokenService } from './qoreid-token.service';
+import { safeJson } from '@app/common';
 
 interface QoreIdNinResponse {
   status?: { state?: string; status?: string };
@@ -81,7 +82,7 @@ export class QoreIdNinProvider implements NinProvider {
     }
     if (!response.ok || !body) {
       this.logger.error(
-        `QoreID NIN lookup failed: ${response.status} ${JSON.stringify(body)}`,
+        `QoreID NIN lookup failed: ${response.status} ${safeJson(body)}`,
       );
       throw new ServiceUnavailableException('Failed to verify NIN');
     }

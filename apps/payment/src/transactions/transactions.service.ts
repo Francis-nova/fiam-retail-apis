@@ -96,7 +96,7 @@ export class TransactionsService {
 
     if (!wallet) {
       this.logger.error(
-        `${input.provider} payin for unmatched account_number "${input.accountNumber}" (reference ${input.reference}) — flagged for manual reconciliation`,
+        `${input.provider} payin for unmatched account_number "[REDACTED]" (reference ${input.reference}) — flagged for manual reconciliation`,
       );
       return this.transactionsRepo.findOneByOrFail({ id: transactionId });
     }

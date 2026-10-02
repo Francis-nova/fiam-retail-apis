@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AuthConfig } from '../config/configuration';
+import { safeJson } from '@app/common';
 
 interface QoreIdSessionResponse {
   sessionId: string;
@@ -80,7 +81,7 @@ export class QoreIdSessionService {
 
     if (!response.ok || !body?.sdkSessionToken) {
       this.logger.error(
-        `QoreID session creation failed for product ${productCode}: ${response.status} ${JSON.stringify(body)}`,
+        `QoreID session creation failed for product ${productCode}: ${response.status} ${safeJson(body)}`,
       );
       throw new ServiceUnavailableException(
         'Failed to start identity verification session',

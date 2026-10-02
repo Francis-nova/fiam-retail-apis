@@ -4,3 +4,4 @@ export * from './crypto/hash';
 export * from './payments/currency.enum';
 export * from './messaging/account-provisioning.message';
 export * from './messaging/notification.message';
+export * from './logging/redact';

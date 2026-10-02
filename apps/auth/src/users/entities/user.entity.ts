@@ -11,6 +11,9 @@ export enum UserStatus {
   PENDING_VERIFICATION = 'PENDING_VERIFICATION',
   ACTIVE = 'ACTIVE',
   SUSPENDED = 'SUSPENDED',
+  // Terminal: set by the console's close-account action. Email/phone are
+  // anonymized; KYC identifiers and records are retained.
+  CLOSED = 'CLOSED',
 }
 
 // CBN tiered-KYC framework — every customer starts at Tier 1 on signup.
@@ -131,6 +134,20 @@ export class User {
     nullable: true,
   })
   paymentAccountProvisioningRequestedAt: Date | null;
+
+  @Column({
+    name: 'tier_upgrade_decided_at',
+    type: 'timestamptz',
+    nullable: true,
+  })
+  tierUpgradeDecidedAt: Date | null;
+
+  // Shown to the customer when the upgrade is rejected.
+  @Column({ name: 'tier_upgrade_decision_note', type: 'text', nullable: true })
+  tierUpgradeDecisionNote: string | null;
+
+  @Column({ name: 'closed_at', type: 'timestamptz', nullable: true })
+  closedAt: Date | null;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

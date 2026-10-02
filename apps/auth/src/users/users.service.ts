@@ -1,7 +1,12 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { TierUpgradeStatus, User, UserStatus } from './entities/user.entity';
+import {
+  CustomerTier,
+  TierUpgradeStatus,
+  User,
+  UserStatus,
+} from './entities/user.entity';
 
 // Emails are case-insensitive in practice (every real provider treats them
 // that way) but Postgres' unique index isn't — normalize on every write and
@@ -134,6 +139,66 @@ export class UsersService {
     await this.usersRepo.update(id, {
       tierUpgradeStatus: status,
       tierUpgradeSubmittedAt: submittedAt,
+      // A fresh submission supersedes any earlier decision.
+      tierUpgradeDecidedAt: null,
+      tierUpgradeDecisionNote: null,
     });
+  }
+
+  // --- Console-driven account administration (see internal/account-admin) ---
+
+  async setStatus(id: string, status: UserStatus): Promise<void> {
+    await this.usersRepo.update(id, { status });
+  }
+
+  async updateProfileFields(
+    id: string,
+    data: { firstName?: string; lastName?: string; phone?: string },
+  ): Promise<void> {
+    await this.usersRepo.update(id, data);
+  }
+
+  // Phone changed by staff: the new number has not been proven yet.
+  async setPhoneUnverified(id: string, phone: string): Promise<void> {
+    await this.usersRepo.update(id, { phone, phoneVerifiedAt: null });
+  }
+
+  // Frees the email/phone for reuse while keeping the row (and with it the
+  // KYC identifiers and every record that references this user id).
+  async markClosed(id: string, anonymizedEmail: string): Promise<void> {
+    await this.usersRepo.update(id, {
+      status: UserStatus.CLOSED,
+      closedAt: new Date(),
+      email: anonymizedEmail,
+      phone: null,
+      phoneVerifiedAt: null,
+    });
+  }
+
+  // Applies a review decision only if the upgrade is still UNDER_REVIEW, in a
+  // single conditional UPDATE — two reviewers deciding at once can't both win.
+  // Returns false when it was no longer under review.
+  async decideTierUpgrade(
+    id: string,
+    decision: TierUpgradeStatus.APPROVED | TierUpgradeStatus.REJECTED,
+    note: string | null,
+  ): Promise<boolean> {
+    const result = await this.usersRepo
+      .createQueryBuilder()
+      .update(User)
+      .set({
+        tierUpgradeStatus: decision,
+        tierUpgradeDecidedAt: new Date(),
+        tierUpgradeDecisionNote: note,
+        ...(decision === TierUpgradeStatus.APPROVED
+          ? { tier: CustomerTier.TIER_3 }
+          : {}),
+      })
+      .where('id = :id AND tier_upgrade_status = :under', {
+        id,
+        under: TierUpgradeStatus.UNDER_REVIEW,
+      })
+      .execute();
+    return (result.affected ?? 0) === 1;
   }
 }

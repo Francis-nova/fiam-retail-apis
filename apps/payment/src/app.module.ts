@@ -12,6 +12,7 @@ import { TransactionsModule } from './transactions/transactions.module';
 import { BanksModule } from './banks/banks.module';
 import { BeneficiariesModule } from './beneficiaries/beneficiaries.module';
 import { PayoutsModule } from './payouts/payouts.module';
+import { InternalModule } from './internal/internal.module';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { PayoutsModule } from './payouts/payouts.module';
     BanksModule,
     BeneficiariesModule,
     PayoutsModule,
+    InternalModule,
   ],
   controllers: [AppController],
 })

@@ -10,6 +10,7 @@ import { OtpModule } from './otp/otp.module';
 import { SessionsModule } from './sessions/sessions.module';
 import { AuthModule } from './auth/auth.module';
 import { InternalModule } from './internal/internal.module';
+import { DeletionModule } from './deletion/deletion.module';
 import { HealthController } from './health/health.controller';
 
 @Module({
@@ -28,6 +29,7 @@ import { HealthController } from './health/health.controller';
     SessionsModule,
     AuthModule,
     InternalModule,
+    DeletionModule,
   ],
   controllers: [HealthController],
 })

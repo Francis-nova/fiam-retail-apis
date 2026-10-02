@@ -12,6 +12,9 @@ import { Wallet } from './wallet.entity';
 
 export enum PaymentProviderKey {
   VFD = 'VFD',
+  // Not a real provider: marks transactions posted by staff via the admin
+  // console. Never registered in PaymentProviderRegistryService.
+  MANUAL = 'MANUAL',
 }
 
 export enum AddressStatus {

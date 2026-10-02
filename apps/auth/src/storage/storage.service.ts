@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as Minio from 'minio';
+import type { Readable } from 'stream';
 import { AuthConfig } from '../config/configuration';
 
 @Injectable()
@@ -53,6 +54,20 @@ export class StorageService {
       );
     } catch (err) {
       this.logger.error(`MinIO upload failed for ${objectKey}`, err as Error);
+      throw new ServiceUnavailableException(
+        'File storage is currently unavailable',
+      );
+    }
+  }
+
+  // Streams an object back — used by the admin console's document viewer,
+  // which reaches files through the service instead of exposing MinIO.
+  async getObject(objectKey: string): Promise<Readable> {
+    try {
+      await this.ensureBucket();
+      return await this.client.getObject(this.bucket, objectKey);
+    } catch (err) {
+      this.logger.error(`MinIO read failed for ${objectKey}`, err as Error);
       throw new ServiceUnavailableException(
         'File storage is currently unavailable',
       );

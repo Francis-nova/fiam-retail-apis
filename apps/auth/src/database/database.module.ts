@@ -9,6 +9,7 @@ import { Otp } from '../otp/entities/otp.entity';
 import { TrustedDevice } from '../devices/entities/trusted-device.entity';
 import { PendingLogin } from '../auth/entities/pending-login.entity';
 import { KycDocument } from '../kyc/entities/kyc-document.entity';
+import { AccountDeletionRequest } from '../deletion/entities/account-deletion-request.entity';
 import { AuthConfig } from '../config/configuration';
 
 @Module({
@@ -27,6 +28,7 @@ import { AuthConfig } from '../config/configuration';
           TrustedDevice,
           PendingLogin,
           KycDocument,
+          AccountDeletionRequest,
         ],
         migrations: [__dirname + '/migrations/*{.ts,.js}'],
         synchronize: false,

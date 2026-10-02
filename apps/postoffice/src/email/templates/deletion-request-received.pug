@@ -1,0 +1,12 @@
+extends layout
+include mixins
+
+block content
+  +heading('We received your request')
+  +greeting(firstName)
+  p(style="margin:0 0 16px 0; font-size:15px; line-height:1.6; color:#000909;")
+    | We've received your request to delete your Fiam account. Our team will review it, and we'll email you once it's done.
+  p(style="margin:0 0 16px 0; font-size:15px; line-height:1.6; color:#000909;")
+    | Until then your account works as normal. If you've changed your mind, you can cancel the request any time from #[strong Settings] in the app.
+  p(style="margin:0; font-size:14px; line-height:1.6; color:#7F7F7F;")
+    | If you didn't make this request, please change your password and contact Fiam support straight away.

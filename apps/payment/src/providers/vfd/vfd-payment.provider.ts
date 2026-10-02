@@ -5,7 +5,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { sha512 } from '@app/common';
+import { sha512, safeJson } from '@app/common';
 import { PaymentConfig } from '../../config/configuration';
 import { PaymentProviderKey } from '../../wallets/entities/address.entity';
 import {
@@ -90,7 +90,7 @@ export class VfdPaymentProvider implements PaymentProvider {
 
     if (!response.ok || body?.status !== '00' || !body.data?.access_token) {
       this.logger.error(
-        `VFD token request failed: ${response.status} ${JSON.stringify(body)}`,
+        `VFD token request failed: ${response.status} ${safeJson(body)}`,
       );
       throw new ServiceUnavailableException('Failed to authenticate with VFD');
     }
@@ -190,7 +190,7 @@ export class VfdPaymentProvider implements PaymentProvider {
       const accountNumber = body.data?.accountNo;
       if (!accountNumber) {
         this.logger.error(
-          `VFD account creation "${body.status}" had no accountNo: ${JSON.stringify(body)}`,
+          `VFD account creation "${body.status}" had no accountNo: ${safeJson(body)}`,
         );
         throw new ServiceUnavailableException(
           'VFD account creation is currently unavailable',
@@ -227,7 +227,7 @@ export class VfdPaymentProvider implements PaymentProvider {
     // permissions are misconfigured on VFD's side, not a bad customer
     // input — surface it as our own unavailability, not their fault.
     this.logger.error(
-      `VFD account creation failed: ${response.status} ${JSON.stringify(body)}`,
+      `VFD account creation failed: ${response.status} ${safeJson(body)}`,
     );
     throw new ServiceUnavailableException(
       'VFD account creation is currently unavailable',
@@ -252,7 +252,7 @@ export class VfdPaymentProvider implements PaymentProvider {
 
     if (!response.ok || !body || body.status !== '00') {
       this.logger.error(
-        `VFD bank list failed: ${response.status} ${JSON.stringify(body)}`,
+        `VFD bank list failed: ${response.status} ${safeJson(body)}`,
       );
       throw new ServiceUnavailableException(
         'Unable to fetch bank list from VFD',
@@ -287,7 +287,7 @@ export class VfdPaymentProvider implements PaymentProvider {
       !body.data?.accountNo
     ) {
       this.logger.error(
-        `VFD account enquiry failed: ${response.status} ${JSON.stringify(body)}`,
+        `VFD account enquiry failed: ${response.status} ${safeJson(body)}`,
       );
       throw new ServiceUnavailableException(
         'Unable to fetch account details from VFD',
@@ -323,7 +323,7 @@ export class VfdPaymentProvider implements PaymentProvider {
     }
     if (!response.ok || !body || body.status !== '00' || !body.data) {
       this.logger.error(
-        `VFD recipient lookup failed: ${response.status} ${JSON.stringify(body)}`,
+        `VFD recipient lookup failed: ${response.status} ${safeJson(body)}`,
       );
       throw new ServiceUnavailableException(
         'Unable to resolve transfer recipient',

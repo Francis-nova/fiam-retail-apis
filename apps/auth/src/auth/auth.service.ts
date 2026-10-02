@@ -66,6 +66,16 @@ function progressOf(user: User): OnboardingProgress {
   };
 }
 
+// Local-dev convenience only: lets the mobile app show the code on screen
+// when no mailer/SMS is wired up. Never honoured in production, whatever the
+// flag says — a code in an API response would defeat the verification.
+function devOtp(otp: string): { otp?: string } {
+  const enabled =
+    process.env.EXPOSE_DEV_OTP === 'true' &&
+    process.env.NODE_ENV !== 'production';
+  return enabled ? { otp } : {};
+}
+
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
@@ -84,11 +94,31 @@ export class AuthService {
     private readonly notificationPublisher: NotificationPublisher,
   ) {}
 
+  private sendEmailOtp(
+    user: { email: string; firstName: string },
+    otp: string,
+    intro: string,
+    heading: string,
+  ): void {
+    this.notificationPublisher.requestEmail(user.email, 'verification-code', {
+      heading,
+      firstName: user.firstName,
+      intro,
+      code: otp,
+      expiryMinutes: '5',
+    });
+  }
+
   async register(
     dto: RegisterDto,
-  ): Promise<{ userId: string; email: string; otp: string }> {
+  ): Promise<{ userId: string; email: string; otp?: string }> {
     let user = await this.usersService.findByEmail(dto.email);
     if (user && user.status === UserStatus.ACTIVE) {
+      throw new ConflictException('An account with this email already exists');
+    }
+    // A suspended account must not be able to "resume signup" — that would
+    // overwrite the password and, via the email OTP, flip it back to ACTIVE.
+    if (user && user.status === UserStatus.SUSPENDED) {
       throw new ConflictException('An account with this email already exists');
     }
 
@@ -110,25 +140,39 @@ export class AuthService {
       });
     }
 
-    // Dumb OTP: this is a demo build with no real mailer wired up yet, so
-    // the code is handed straight back to the caller instead of emailed.
     const otp = await this.otpService.generate(
       user.id,
       OtpPurpose.REGISTRATION,
     );
-    return { userId: user.id, email: user.email, otp };
+    this.sendEmailOtp(
+      user,
+      otp,
+      'Use this code to verify your email and finish creating your Fiam account.',
+      'Verify your email',
+    );
+    return { userId: user.id, email: user.email, ...devOtp(otp) };
   }
 
-  async resendRegistrationOtp(email: string): Promise<{ otp: string }> {
+  async resendRegistrationOtp(email: string): Promise<{ otp?: string }> {
     const user = await this.usersService.findByEmail(email);
-    if (!user || user.emailVerifiedAt) {
+    if (
+      !user ||
+      user.emailVerifiedAt ||
+      user.status !== UserStatus.PENDING_VERIFICATION
+    ) {
       throw new BadRequestException('No pending registration for this email');
     }
     const otp = await this.otpService.generate(
       user.id,
       OtpPurpose.REGISTRATION,
     );
-    return { otp };
+    this.sendEmailOtp(
+      user,
+      otp,
+      'Use this code to verify your email and finish creating your Fiam account.',
+      'Verify your email',
+    );
+    return { ...devOtp(otp) };
   }
 
   async verifyOtp(
@@ -148,6 +192,10 @@ export class AuthService {
     }
 
     if (purpose === OtpPurpose.REGISTRATION) {
+      // Only a genuinely pending signup may be activated by this OTP.
+      if (user.status !== UserStatus.PENDING_VERIFICATION) {
+        throw new UnauthorizedException('Invalid or expired code');
+      }
       await this.usersService.markEmailVerified(user.id);
     }
 
@@ -501,7 +549,7 @@ export class AuthService {
     userId: string,
     bvn: string,
     dateOfBirth: string,
-  ): Promise<{ otp: string }> {
+  ): Promise<{ otp?: string }> {
     const user = await this.usersService.findById(userId);
 
     const existing = await this.usersService.findByBvn(bvn);
@@ -548,13 +596,19 @@ export class AuthService {
 
     await this.usersService.setBvn(userId, bvn);
     await this.usersService.setDateOfBirth(userId, dateOfBirth);
-    // Dumb OTP for demo purposes — QoreID's BVN lookup has no OTP dispatch
-    // of its own, so we generate/hash/store our own the same way as email.
+    // QoreID's BVN lookup has no OTP dispatch of its own, so we generate our
+    // own and text it to the phone the customer already verified.
     const otp = await this.otpService.generate(
       userId,
       OtpPurpose.BVN_VERIFICATION,
     );
-    return { otp };
+    if (user.phone) {
+      this.notificationPublisher.requestSms(
+        user.phone,
+        `Your Fiam BVN verification code is ${otp}. It expires in 5 minutes.`,
+      );
+    }
+    return { ...devOtp(otp) };
   }
 
   async verifyBvnOtp(
@@ -608,18 +662,22 @@ export class AuthService {
     });
   }
 
-  async requestPasswordReset(email: string): Promise<{ otp: string }> {
+  async requestPasswordReset(email: string): Promise<{ otp?: string }> {
     const user = await this.usersService.findByEmail(email);
     if (!user || user.status !== UserStatus.ACTIVE) {
       throw new BadRequestException('No account found with this email');
     }
-    // Dumb OTP for demo purposes, same as the other OTP steps — no real
-    // mailer is wired up yet, so the code is handed back in the response.
     const otp = await this.otpService.generate(
       user.id,
       OtpPurpose.PASSWORD_RESET,
     );
-    return { otp };
+    this.sendEmailOtp(
+      user,
+      otp,
+      'Use this code to reset your Fiam password.',
+      'Reset your password',
+    );
+    return { ...devOtp(otp) };
   }
 
   async verifyPasswordResetOtp(

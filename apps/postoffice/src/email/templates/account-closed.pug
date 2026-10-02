@@ -1,0 +1,12 @@
+extends layout
+include mixins
+
+block content
+  +heading('Your account has been closed')
+  +greeting(firstName)
+  p(style="margin:0 0 16px 0; font-size:15px; line-height:1.6; color:#000909;")
+    | As you asked, your Fiam account has now been closed. You've been signed out of all devices.
+  p(style="margin:0 0 16px 0; font-size:15px; line-height:1.6; color:#000909;")
+    | We're required by Nigerian financial regulations to keep certain transaction and identity records for a number of years. Your email address and phone number have been removed from your account.
+  p(style="margin:0; font-size:14px; line-height:1.6; color:#7F7F7F;")
+    | Thank you for using Fiam. You're welcome to open a new account at any time.

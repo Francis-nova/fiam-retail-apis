@@ -1,13 +1,24 @@
 import {
+  Body,
   Controller,
+  Delete,
   Get,
+  HttpCode,
   Param,
   ParseUUIDPipe,
+  Patch,
+  Post,
+  Res,
+  StreamableFile,
   UseGuards,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { ApiExcludeController } from '@nestjs/swagger';
 import { UsersService } from '../users/users.service';
 import { InternalKeyGuard } from './internal-key.guard';
+import { AccountAdminService } from './account-admin.service';
+import { DeletionService } from '../deletion/deletion.service';
+import { AccountActionDto, UpdateProfileDto } from './account-admin.dto';
 
 // Consumed by other Fiam services (e.g. payment, to address a transaction
 // email). Not part of the public API, so it's hidden from Swagger.
@@ -15,11 +26,105 @@ import { InternalKeyGuard } from './internal-key.guard';
 @Controller('internal')
 @UseGuards(InternalKeyGuard)
 export class InternalController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(
+    private readonly usersService: UsersService,
+    private readonly accountAdmin: AccountAdminService,
+    private readonly deletion: DeletionService,
+  ) {}
 
   @Get('users/:id/contact')
   async contact(@Param('id', new ParseUUIDPipe()) id: string) {
     const user = await this.usersService.findById(id);
     return { email: user.email, firstName: user.firstName };
+  }
+
+  // --- Back-office (admin console) account actions ---
+
+  @Post('users/:id/suspend')
+  @HttpCode(200)
+  suspend(@Param('id', new ParseUUIDPipe()) id: string) {
+    return this.accountAdmin.suspend(id);
+  }
+
+  @Post('users/:id/reactivate')
+  @HttpCode(200)
+  reactivate(@Param('id', new ParseUUIDPipe()) id: string) {
+    return this.accountAdmin.reactivate(id);
+  }
+
+  @Patch('users/:id/profile')
+  updateProfile(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() dto: UpdateProfileDto,
+  ) {
+    return this.accountAdmin.updateProfile(id, dto);
+  }
+
+  @Post('users/:id/sessions/revoke')
+  @HttpCode(200)
+  revokeSessions(@Param('id', new ParseUUIDPipe()) id: string) {
+    return this.accountAdmin.revokeSessions(id);
+  }
+
+  @Delete('users/:id/sessions/:sessionId')
+  revokeSession(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Param('sessionId', new ParseUUIDPipe()) sessionId: string,
+  ) {
+    return this.accountAdmin.revokeSession(id, sessionId);
+  }
+
+  @Post('users/:id/close')
+  @HttpCode(200)
+  close(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() dto: AccountActionDto,
+  ) {
+    return this.accountAdmin.close(id, dto.actorEmail);
+  }
+
+  @Post('deletion-requests/:id/reject')
+  @HttpCode(200)
+  rejectDeletion(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() dto: AccountActionDto,
+  ) {
+    return this.deletion.reject(id, dto.reason ?? '', dto.actorEmail);
+  }
+
+  @Post('users/:id/tier-upgrade/approve')
+  @HttpCode(200)
+  approveTierUpgrade(@Param('id', new ParseUUIDPipe()) id: string) {
+    return this.accountAdmin.approveTierUpgrade(id);
+  }
+
+  @Post('users/:id/tier-upgrade/reject')
+  @HttpCode(200)
+  rejectTierUpgrade(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() dto: AccountActionDto,
+  ) {
+    return this.accountAdmin.rejectTierUpgrade(id, dto.reason ?? '');
+  }
+
+  // Streams a stored KYC document. nosniff + a no-store policy because these
+  // are identity documents; only image/PDF types are ever rendered inline.
+  @Get('users/:id/kyc-documents/:docId/file')
+  async kycDocumentFile(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Param('docId', new ParseUUIDPipe()) docId: string,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const file = await this.accountAdmin.kycDocumentFile(id, docId);
+    const inline = /^(image\/(jpeg|png|heic)|application\/pdf)$/.test(
+      file.mimeType,
+    );
+    res.set({
+      'Content-Type': inline ? file.mimeType : 'application/octet-stream',
+      'Content-Disposition': `${inline ? 'inline' : 'attachment'}; filename="${encodeURIComponent(file.filename)}"`,
+      'X-Content-Type-Options': 'nosniff',
+      'Cache-Control': 'no-store',
+    });
+    return new StreamableFile(file.stream);
   }
 }

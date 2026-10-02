@@ -1,0 +1,36 @@
+import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
+import configuration from './config/configuration';
+import { validate } from './config/env.validation';
+import { DatabaseModule } from './database/database.module';
+import { AuditModule } from './audit/audit.module';
+import { AdminAuthModule } from './auth/auth.module';
+import { ReadonlyDatabaseModule } from './database/readonly-database.module';
+import { DeletionRequestsModule } from './deletion-requests/deletion-requests.module';
+import { PostingsModule } from './postings/postings.module';
+import { CustomersModule } from './customers/customers.module';
+import { TransactionsModule } from './transactions/transactions.module';
+import { StaffModule } from './staff/staff.module';
+import { HealthController } from './health/health.controller';
+
+@Module({
+  imports: [
+    ConfigModule.forRoot({
+      isGlobal: true,
+      envFilePath: 'apps/admin/.env',
+      load: [configuration],
+      validate,
+    }),
+    DatabaseModule,
+    ReadonlyDatabaseModule,
+    AuditModule,
+    AdminAuthModule,
+    StaffModule,
+    TransactionsModule,
+    CustomersModule,
+    PostingsModule,
+    DeletionRequestsModule,
+  ],
+  controllers: [HealthController],
+})
+export class AppModule {}
