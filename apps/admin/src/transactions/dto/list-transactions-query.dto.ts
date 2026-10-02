@@ -38,7 +38,7 @@ export class ListTransactionsQueryDto extends PaginationQueryDto {
           .split(',')
           .map((s) => s.trim().toUpperCase())
           .filter(Boolean)
-      : value,
+      : (value as unknown),
   )
   @IsEnum(TxStatus, { each: true })
   status?: TxStatus[];

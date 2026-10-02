@@ -1,9 +1,9 @@
 # syntax=docker/dockerfile:1
 
-# Builds all three Nest apps (auth, payment, postoffice) from this one
+# Builds all four Nest apps (auth, payment, postoffice, admin) from this one
 # monorepo into a single runtime image. Which app actually runs in a given
 # container is decided by the `command:` override in docker/stack.yml, not
-# by anything in this file — all three services in staging use this same
+# by anything in this file — all four services in staging use this same
 # image.
 
 FROM node:22-alpine AS builder
@@ -31,7 +31,7 @@ COPY --from=builder /app/eng.traineddata ./eng.traineddata
 
 # Informational only — the actual bound port depends on which app's
 # `command:` this container is running (7001 auth / 7002 postoffice / 7003
-# payment), set via each service's *_PORT env var in docker/stack.yml.
-EXPOSE 7001 7002 7003
+# payment / 7004 admin), set via each service's *_PORT env var in docker/stack.yml.
+EXPOSE 7001 7002 7003 7004
 
 CMD ["node", "dist/apps/auth/apps/auth/src/main.js"]

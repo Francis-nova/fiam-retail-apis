@@ -60,7 +60,7 @@ export class ListPostingsQueryDto extends PaginationQueryDto {
           .split(',')
           .map((s) => s.trim().toUpperCase())
           .filter(Boolean)
-      : value,
+      : (value as unknown),
   )
   @IsEnum(PostingStatus, { each: true })
   status?: PostingStatus[];

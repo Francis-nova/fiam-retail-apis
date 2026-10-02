@@ -97,7 +97,14 @@ jobs:
             "${{ secrets.STAGING_SSH_USER }}@${{ secrets.STAGING_SSH_HOST }}" \
             bash -s <<'REMOTE'
           set -euo pipefail
-          for app in auth payment; do
+          for app in auth payment admin; do
+            # admin is added after first launch: until its service exists on
+            # the box there is nothing to read the DB URL from, and that must
+            # not block auth/payment deploys.
+            if [ "$app" = admin ] && ! docker service inspect fiam_admin >/dev/null 2>&1; then
+              echo "fiam_admin is not deployed yet - skipping its migrations"
+              continue
+            fi
             name="migrate-${app}-${{ github.run_id }}"
             var="$(echo "$app" | tr a-z A-Z)_DATABASE_URL"
             db_url=$(docker service inspect "fiam_${app}" \
@@ -135,7 +142,11 @@ jobs:
             "${{ secrets.STAGING_SSH_USER }}@${{ secrets.STAGING_SSH_HOST }}" \
             bash -s <<'REMOTE'
           set -euo pipefail
-          for svc in auth payment postoffice; do
+          for svc in auth payment postoffice admin; do
+            if [ "$svc" = admin ] && ! docker service inspect fiam_admin >/dev/null 2>&1; then
+              echo "fiam_admin is not deployed yet - skipping"
+              continue
+            fi
             docker service update --detach=false \
               --image "${{ env.IMAGE }}:${{ github.sha }}" "fiam_${svc}"
             state=$(docker service inspect "fiam_${svc}" --format '{{.UpdateStatus.State}}')

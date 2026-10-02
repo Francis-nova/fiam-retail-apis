@@ -44,7 +44,7 @@ class ListQuery extends PaginationQueryDto {
           .split(',')
           .map((s) => s.trim().toUpperCase())
           .filter(Boolean)
-      : value,
+      : (value as unknown),
   )
   @IsEnum(RequestStatus, { each: true })
   status?: RequestStatus[];

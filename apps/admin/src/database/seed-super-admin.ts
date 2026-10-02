@@ -1,11 +1,14 @@
-// Usage (from apis/): SEED_EMAIL=you@fiam.ng SEED_NAME="Your Name" \
+// Usage (from apis/, dev): SEED_EMAIL=you@fiam.ng SEED_NAME="Your Name" \
 //   npm run seed:admin
+// Usage (staging/prod): the compiled copy at
+//   dist/apps/admin/apps/admin/src/database/seed-super-admin.js, run as a
+//   one-shot job with ADMIN_DATABASE_URL set (see docker/README.md).
 // Prints a one-time temporary password; the account must change it on first
 // sign-in. No-op (exits non-zero) if the email already exists.
 import { randomBytes } from 'crypto';
 import * as argon2 from 'argon2';
-import { AppDataSource } from '../src/database/data-source';
-import { StaffRole, StaffUser } from '../src/staff/entities/staff-user.entity';
+import { AppDataSource } from './data-source';
+import { StaffRole, StaffUser } from '../staff/entities/staff-user.entity';
 
 async function main() {
   const email = process.env.SEED_EMAIL?.trim().toLowerCase();

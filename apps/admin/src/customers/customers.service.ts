@@ -2,7 +2,10 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { AUTH_DB, PAYMENT_DB } from '../database/readonly-database.module';
-import { ListCustomersQueryDto } from './dto/list-customers-query.dto';
+import {
+  ListCustomersQueryDto,
+  TierUpgradeStatus,
+} from './dto/list-customers-query.dto';
 
 interface UserRow {
   id: string;
@@ -120,12 +123,12 @@ export class CustomersService {
     // A review queue is worked oldest-submission-first; everything else is
     // newest-customer-first.
     const order =
-      q.tierUpgradeStatus === 'UNDER_REVIEW'
+      q.tierUpgradeStatus === TierUpgradeStatus.UNDER_REVIEW
         ? 'tier_upgrade_submitted_at ASC NULLS LAST'
         : 'created_at DESC';
     const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
-    const [rows, total]: [UserRow[], { n: string }[]] = await Promise.all([
+    const [rows, total] = (await Promise.all([
       this.auth.query(
         `SELECT ${COLUMNS} FROM users ${clause}
           ORDER BY ${order}, id
@@ -136,7 +139,7 @@ export class CustomersService {
         `SELECT count(*)::text AS n FROM users ${clause}`,
         params,
       ),
-    ]);
+    ])) as [UserRow[], { n: string }[]];
 
     const wallets = await this.wallets(rows.map((r) => r.id));
     return {
@@ -160,42 +163,43 @@ export class CustomersService {
     const u = rows[0];
     if (!u) throw new NotFoundException('Customer not found');
 
-    const [wallets, docs, txStats, sessionStats, deviceStats, deletion]: [
-      WalletRow[],
-      { doc_type: string; id_type: string | null; uploaded_at: Date }[],
-      { status: string; count: number }[],
-      { active: number; last_seen: Date | null }[],
-      { n: number }[],
-      { id: string; reason: string | null; created_at: Date }[],
-    ] = await Promise.all([
-      this.wallets([id]),
-      this.auth.query(
-        `SELECT doc_type, id_type, uploaded_at FROM kyc_documents
+    const [wallets, docs, txStats, sessionStats, deviceStats, deletion] =
+      (await Promise.all([
+        this.wallets([id]),
+        this.auth.query(
+          `SELECT doc_type, id_type, uploaded_at FROM kyc_documents
           WHERE user_id = $1 ORDER BY uploaded_at DESC`,
-        [id],
-      ),
-      this.payment.query(
-        `SELECT t.status, count(*)::int AS count
+          [id],
+        ),
+        this.payment.query(
+          `SELECT t.status, count(*)::int AS count
            FROM transactions t JOIN wallets w ON w.id = t.wallet_id
           WHERE w.user_id = $1 GROUP BY t.status`,
-        [id],
-      ),
-      this.auth.query(
-        `SELECT count(*) FILTER (WHERE revoked_at IS NULL)::int AS active,
+          [id],
+        ),
+        this.auth.query(
+          `SELECT count(*) FILTER (WHERE revoked_at IS NULL)::int AS active,
                 max(last_seen_at) AS last_seen
            FROM sessions WHERE user_id = $1`,
-        [id],
-      ),
-      this.auth.query(
-        `SELECT count(*)::int AS n FROM trusted_devices WHERE user_id = $1`,
-        [id],
-      ),
-      this.auth.query(
-        `SELECT id, reason, created_at FROM account_deletion_requests
+          [id],
+        ),
+        this.auth.query(
+          `SELECT count(*)::int AS n FROM trusted_devices WHERE user_id = $1`,
+          [id],
+        ),
+        this.auth.query(
+          `SELECT id, reason, created_at FROM account_deletion_requests
           WHERE user_id = $1 AND status = 'PENDING'`,
-        [id],
-      ),
-    ]);
+          [id],
+        ),
+      ])) as [
+        WalletRow[],
+        { doc_type: string; id_type: string | null; uploaded_at: Date }[],
+        { status: string; count: number }[],
+        { active: number; last_seen: Date | null }[],
+        { n: number }[],
+        { id: string; reason: string | null; created_at: Date }[],
+      ];
 
     return {
       ...this.view(u, wallets),
@@ -228,9 +232,10 @@ export class CustomersService {
   }
 
   async assertExists(id: string) {
-    const rows = await this.auth.query(`SELECT 1 FROM users WHERE id = $1`, [
-      id,
-    ]);
+    const rows: unknown[] = await this.auth.query(
+      `SELECT 1 FROM users WHERE id = $1`,
+      [id],
+    );
     if (rows.length === 0) throw new NotFoundException('Customer not found');
   }
 
@@ -298,7 +303,23 @@ export class CustomersService {
     await this.assertExists(id);
     const wallets = await this.wallets([id]);
     const walletIds = wallets.map((w) => w.id);
-    const [accounts, beneficiaries]: [
+    const [accounts, beneficiaries] = (await Promise.all([
+      walletIds.length
+        ? this.payment.query(
+            `SELECT wallet_id, provider, provider_account_number,
+                    provider_account_name, status, activated_at
+               FROM addresses WHERE wallet_id = ANY($1::uuid[])
+              ORDER BY activated_at DESC`,
+            [walletIds],
+          )
+        : [],
+      this.payment.query(
+        `SELECT id, currency, bank_name, bank_code, account_number,
+                account_name, created_at
+           FROM beneficiaries WHERE user_id = $1 ORDER BY created_at DESC`,
+        [id],
+      ),
+    ])) as [
       {
         wallet_id: string;
         provider: string;
@@ -316,23 +337,7 @@ export class CustomersService {
         account_name: string | null;
         created_at: Date;
       }[],
-    ] = await Promise.all([
-      walletIds.length
-        ? this.payment.query(
-            `SELECT wallet_id, provider, provider_account_number,
-                    provider_account_name, status, activated_at
-               FROM addresses WHERE wallet_id = ANY($1::uuid[])
-              ORDER BY activated_at DESC`,
-            [walletIds],
-          )
-        : [],
-      this.payment.query(
-        `SELECT id, currency, bank_name, bank_code, account_number,
-                account_name, created_at
-           FROM beneficiaries WHERE user_id = $1 ORDER BY created_at DESC`,
-        [id],
-      ),
-    ]);
+    ];
     return {
       wallets: wallets.map((w) => ({
         id: w.id,
@@ -363,20 +368,19 @@ export class CustomersService {
   // Everything the close-account precheck needs: money still in the wallet,
   // or payments still in flight, both block closure.
   async closureBlockers(id: string) {
-    const [bal, inflight]: [{ total: string }[], { n: number }[]] =
-      await Promise.all([
-        this.payment.query(
-          `SELECT COALESCE(sum(balance), 0)::text AS total
+    const [bal, inflight] = (await Promise.all([
+      this.payment.query(
+        `SELECT COALESCE(sum(balance), 0)::text AS total
              FROM wallets WHERE user_id = $1`,
-          [id],
-        ),
-        this.payment.query(
-          `SELECT count(*)::int AS n
+        [id],
+      ),
+      this.payment.query(
+        `SELECT count(*)::int AS n
              FROM transactions t JOIN wallets w ON w.id = t.wallet_id
             WHERE w.user_id = $1 AND t.status IN ('PENDING', 'PROCESSING')`,
-          [id],
-        ),
-      ]);
+        [id],
+      ),
+    ])) as [{ total: string }[], { n: number }[]];
     return {
       balance: bal[0]?.total ?? '0',
       inFlight: inflight[0]?.n ?? 0,
@@ -431,7 +435,19 @@ export class CustomersService {
   // fetched separately, one at a time, so each view is audited).
   async kyc(id: string) {
     const u = await this.snapshot(id);
-    const [extra, docs]: [
+    const [extra, docs] = (await Promise.all([
+      this.auth.query(
+        `SELECT tier_upgrade_decided_at, tier_upgrade_decision_note
+           FROM users WHERE id = $1`,
+        [id],
+      ),
+      this.auth.query(
+        `SELECT id, doc_type, id_type, original_filename, mime_type,
+                size_bytes, uploaded_at, ocr_text
+           FROM kyc_documents WHERE user_id = $1 ORDER BY doc_type`,
+        [id],
+      ),
+    ])) as [
       {
         tier_upgrade_decided_at: Date | null;
         tier_upgrade_decision_note: string | null;
@@ -446,19 +462,7 @@ export class CustomersService {
         uploaded_at: Date;
         ocr_text: string | null;
       }[],
-    ] = await Promise.all([
-      this.auth.query(
-        `SELECT tier_upgrade_decided_at, tier_upgrade_decision_note
-           FROM users WHERE id = $1`,
-        [id],
-      ),
-      this.auth.query(
-        `SELECT id, doc_type, id_type, original_filename, mime_type,
-                size_bytes, uploaded_at, ocr_text
-           FROM kyc_documents WHERE user_id = $1 ORDER BY doc_type`,
-        [id],
-      ),
-    ]);
+    ];
     const have = new Set(docs.map((d) => d.doc_type));
     return {
       accountStatus: u.status,

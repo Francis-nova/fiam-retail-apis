@@ -48,7 +48,7 @@ export class DeletionRequestsService {
       params.push(opts.status);
       where = `WHERE r.status = ANY($1)`;
     }
-    const [rows, total]: [Row[], { n: string }[]] = await Promise.all([
+    const [rows, total] = (await Promise.all([
       this.auth.query(
         `SELECT r.* FROM account_deletion_requests r ${where}
           ORDER BY (r.status = 'PENDING') DESC, r.created_at ASC
@@ -59,7 +59,7 @@ export class DeletionRequestsService {
         `SELECT count(*)::text AS n FROM account_deletion_requests r ${where}`,
         params,
       ),
-    ]);
+    ])) as [Row[], { n: string }[]];
     const contacts = await this.customers.contacts(rows.map((r) => r.user_id));
     const items = await Promise.all(
       rows.map(async (r) => {

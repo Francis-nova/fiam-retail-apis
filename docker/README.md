@@ -1,12 +1,14 @@
 # Staging deployment (Hetzner, Docker Swarm)
 
-Three Nest services (`auth`, `payment`, `postoffice`) built from one shared
+Four Nest services (`auth`, `payment`, `postoffice`, `admin`) built from one shared
 image (`../Dockerfile`), deployed as a Docker Swarm stack alongside
 Postgres, Redis, RabbitMQ, and MinIO. Traefik sits in front and terminates
-TLS for the two public services:
+TLS for the three public services:
 
 - `auth` → https://api.auth.staging.usefiam.com
 - `payment` → https://api.payment.staging.usefiam.com
+- `admin` → https://api.admin.staging.usefiam.com (the staff console's API; the
+  console itself is a static site on Vercel)
 - `postoffice` has no public route — it's only reached over RabbitMQ.
 
 CI (`.github/workflows/ci.yml`) builds and pushes the image to
@@ -135,6 +137,82 @@ is automated for `staging`** by the `deploy-staging` job in the same workflow
    specific to staging — worth fixing properly (auto-declare the DLX on
    boot) at some point rather than repeating this by hand per environment.
 
+## Admin console API (one-time setup)
+
+`admin` is the back-office API for the staff console. It needs its own
+database and two dedicated Postgres roles so the container never holds the
+Postgres superuser password (`postgres/admin-roles.sql` explains exactly what
+each role may do). Do this **after** a CI deploy has applied the auth and
+payment migrations (the roles script refuses to run against a missing table).
+
+1. **DNS** — `api.admin.staging.usefiam.com` → this box (needed before
+   Let's Encrypt can issue the certificate).
+
+2. **Keep `/internal` off the public routers.** Payment's router must exclude
+   it (auth's already does) — `stack.yml` has this; if the stack hasn't been
+   redeployed yet, apply it live first:
+   ```
+   docker service update --label-add \
+     'traefik.http.routers.payment.rule=Host(`api.payment.staging.usefiam.com`) && !PathPrefix(`/internal`)' \
+     fiam_payment
+   ```
+
+3. **Secrets** — append to `docker/.env` (hex values only: they go into
+   connection URLs). `INTERNAL_API_KEY` must already be set.
+   ```
+   ADMIN_DB_PASSWORD=$(openssl rand -hex 24)
+   READONLY_DB_PASSWORD=$(openssl rand -hex 24)
+   ADMIN_JWT_ACCESS_SECRET=$(openssl rand -hex 32)
+   ADMIN_JWT_ACCESS_TTL=15m
+   ADMIN_JWT_REFRESH_TTL_DAYS=7
+   ADMIN_CORS_ORIGIN=https://<the console's Vercel origin, no trailing slash>
+   ```
+
+4. **Roles and database** (idempotent — re-run it whenever auth/payment gain
+   columns the admin API reads, since grants are column-level):
+   ```
+   cd docker && set -a && . ./.env && set +a
+   docker exec -i "$(docker ps -q -f name=fiam_postgres)" \
+     psql -U "$POSTGRES_USER" -v ON_ERROR_STOP=1 \
+       -v admin_pw="$ADMIN_DB_PASSWORD" -v ro_pw="$READONLY_DB_PASSWORD" \
+     < postgres/admin-roles.sql
+   ```
+
+5. **Create the service** (also refreshes the Traefik labels):
+   ```
+   cd docker && set -a && . ./.env && set +a && docker stack deploy -c stack.yml fiam
+   ```
+
+6. **Migrate and seed.** Same one-shot-job technique CI uses (CI skips admin
+   until `fiam_admin` exists, then migrates it on every deploy). The seed
+   prints the first super admin's one-time temporary password in the job log —
+   read it once, then remove the job:
+   ```
+   IMG=$(docker service inspect fiam_admin --format '{{.Spec.TaskTemplate.ContainerSpec.Image}}' | cut -d@ -f1)
+   DB=$(docker service inspect fiam_admin --format '{{range .Spec.TaskTemplate.ContainerSpec.Env}}{{println .}}{{end}}' | grep '^ADMIN_DATABASE_URL=' | cut -d= -f2-)
+
+   docker service create --detach=false --name migrate-admin --mode replicated-job \
+     --network fiam_internal --restart-condition none --env ADMIN_DATABASE_URL="$DB" \
+     "$IMG" node node_modules/typeorm/cli.js migration:run \
+     -d dist/apps/admin/apps/admin/src/database/data-source.js
+   docker service logs migrate-admin --no-trunc | tail -5; docker service rm migrate-admin
+
+   docker service create --detach=false --name seed-admin --mode replicated-job \
+     --network fiam_internal --restart-condition none --env ADMIN_DATABASE_URL="$DB" \
+     --env SEED_EMAIL=you@fiam.ng --env SEED_NAME="Your Name" \
+     "$IMG" node dist/apps/admin/apps/admin/src/database/seed-super-admin.js
+   docker service logs seed-admin --no-trunc | grep -i "temporary password"; docker service rm seed-admin
+   ```
+
+7. **Check**: `curl https://api.admin.staging.usefiam.com/health` → `{"status":"ok"}`.
+
+**Console on Vercel.** Import the `fiam-console` repo, set the build env var
+`VITE_API_URL=https://api.admin.staging.usefiam.com`, deploy. `vercel.json`
+in that repo provides the SPA routing and security headers (strict CSP whose
+`connect-src` allows only that API). Only the production domain can call the
+API — Vercel *preview* URLs have different origins and will be blocked by
+CORS unless added to `ADMIN_CORS_ORIGIN` (comma-separated).
+
 ## Deploying a new build
 
 Once CI has pushed a new image for a commit on `staging`:
@@ -143,6 +221,7 @@ Once CI has pushed a new image for a commit on `staging`:
 docker service update --image ghcr.io/francis-nova/fiam-retail-apis:staging fiam_auth
 docker service update --image ghcr.io/francis-nova/fiam-retail-apis:staging fiam_payment
 docker service update --image ghcr.io/francis-nova/fiam-retail-apis:staging fiam_postoffice
+docker service update --image ghcr.io/francis-nova/fiam-retail-apis:staging fiam_admin
 ```
 
 `update_config.order: start-first` in `stack.yml` means the new container

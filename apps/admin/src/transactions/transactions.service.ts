@@ -175,27 +175,26 @@ export class TransactionsService {
     }
 
     const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
-    const [rows, totals, byStatus]: [TxRow[], { total: string }[], unknown[]] =
-      await Promise.all([
-        this.payment.query(
-          `SELECT ${SELECT} ${FROM} ${clause}
+    const [rows, totals, byStatus] = (await Promise.all([
+      this.payment.query(
+        `SELECT ${SELECT} ${FROM} ${clause}
             ORDER BY t.created_at DESC, t.id
             LIMIT ${pageSize} OFFSET ${(page - 1) * pageSize}`,
-          params,
-        ),
-        this.payment.query(
-          `SELECT count(*)::text AS total ${FROM} ${clause}`,
-          params,
-        ),
-        // Per-status counts and money for the whole filtered set, so the page
-        // can show totals that don't depend on which page you're on.
-        this.payment.query(
-          `SELECT t.status, t.type, count(*)::int AS count,
+        params,
+      ),
+      this.payment.query(
+        `SELECT count(*)::text AS total ${FROM} ${clause}`,
+        params,
+      ),
+      // Per-status counts and money for the whole filtered set, so the page
+      // can show totals that don't depend on which page you're on.
+      this.payment.query(
+        `SELECT t.status, t.type, count(*)::int AS count,
                   COALESCE(sum(t.amount), 0)::text AS amount
              ${FROM} ${clause} GROUP BY t.status, t.type`,
-          params,
-        ),
-      ]);
+        params,
+      ),
+    ])) as [TxRow[], { total: string }[], unknown[]];
 
     const customers = await this.customers(
       rows.map((r) => r.user_id).filter((id): id is string => !!id),

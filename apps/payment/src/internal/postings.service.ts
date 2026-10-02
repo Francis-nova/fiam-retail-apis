@@ -8,7 +8,6 @@ import {
   TransactionType,
 } from '../transactions/entities/transaction.entity';
 import { PaymentProviderKey } from '../wallets/entities/address.entity';
-import { Wallet } from '../wallets/entities/wallet.entity';
 import { WalletsService } from '../wallets/wallets.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CreatePostingDto } from './postings.dto';
@@ -73,7 +72,7 @@ export class PostingsService {
         return manager.save(
           manager.create(Transaction, {
             walletId: dto.walletId,
-            currency: (wallet as Wallet).currency,
+            currency: wallet.currency,
             type: dto.type,
             status: TransactionStatus.SUCCESSFUL,
             provider: PaymentProviderKey.MANUAL,

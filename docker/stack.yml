@@ -1,11 +1,12 @@
 # The redeployable app stack: Postgres, Redis, RabbitMQ, MinIO, and the
-# three Nest services (auth, payment, postoffice), all sharing one built
+# four Nest services (auth, payment, postoffice, admin), all sharing one built
 # image (see ../Dockerfile) that's differentiated per service only by
 # `command:`.
 #
 # Requires the `edge` overlay network from traefik-stack.yml to already
 # exist (auth/payment join it so Traefik can route to them; postoffice has
-# no public API — it's only reached over RabbitMQ — so it stays off `edge`).
+# no public API — it's only reached over RabbitMQ — so it stays off `edge`;
+# admin is the back-office API the staff console calls, so it joins `edge`).
 #
 # Deploy (from inside docker/ — `docker stack deploy` has no --env-file
 # flag AND, unlike `docker compose`, does not auto-load a `.env` file
@@ -19,6 +20,7 @@
 #   docker service update --image ghcr.io/francis-nova/fiam-retail-apis:staging fiam_auth
 #   docker service update --image ghcr.io/francis-nova/fiam-retail-apis:staging fiam_payment
 #   docker service update --image ghcr.io/francis-nova/fiam-retail-apis:staging fiam_postoffice
+#   docker service update --image ghcr.io/francis-nova/fiam-retail-apis:staging fiam_admin
 
 version: '3.8'
 
@@ -171,7 +173,7 @@ services:
       <<: *deploy-defaults
       labels:
         - traefik.enable=true
-        - traefik.http.routers.payment.rule=Host(`api.payment.staging.usefiam.com`)
+        - traefik.http.routers.payment.rule=Host(`api.payment.staging.usefiam.com`) && !PathPrefix(`/internal`)
         - traefik.http.routers.payment.entrypoints=websecure
         - traefik.http.routers.payment.tls.certresolver=le
         - traefik.http.services.payment.loadbalancer.server.port=7003
@@ -206,6 +208,48 @@ services:
       <<: *deploy-defaults
     # No `edge` network / Traefik labels — postoffice has no REST API for
     # other services, it's only ever reached via the RabbitMQ queue.
+
+  admin:
+    image: *image
+    command: ["node", "dist/apps/admin/apps/admin/src/main.js"]
+    environment:
+      NODE_ENV: production
+      ADMIN_PORT: 7004
+      # Own database, owned by a dedicated role (not the Postgres superuser).
+      ADMIN_DATABASE_URL: postgres://fiam_admin_app:${ADMIN_DB_PASSWORD:?set ADMIN_DB_PASSWORD in docker/.env}@postgres:5432/fiam_admin
+      # Read-only, column-limited role into the other services' databases
+      # (see postgres/admin-roles.sql) — never the superuser.
+      AUTH_READONLY_DATABASE_URL: postgres://fiam_readonly:${READONLY_DB_PASSWORD:?set READONLY_DB_PASSWORD in docker/.env}@postgres:5432/fiam_auth
+      PAYMENT_READONLY_DATABASE_URL: postgres://fiam_readonly:${READONLY_DB_PASSWORD}@postgres:5432/fiam_payment
+      # Called from a browser, so CORS stays on: must be the console's exact origin.
+      CORS_ORIGIN: ${ADMIN_CORS_ORIGIN:?set ADMIN_CORS_ORIGIN (the console's origin) in docker/.env}
+      # Deliberately NOT JWT_ACCESS_SECRET: a staff token must never validate
+      # against the customer APIs, nor a customer token against this one.
+      ADMIN_JWT_ACCESS_SECRET: ${ADMIN_JWT_ACCESS_SECRET:?set ADMIN_JWT_ACCESS_SECRET in docker/.env}
+      ADMIN_JWT_ACCESS_TTL: ${ADMIN_JWT_ACCESS_TTL:-15m}
+      ADMIN_JWT_REFRESH_TTL_DAYS: ${ADMIN_JWT_REFRESH_TTL_DAYS:-7}
+      # Writes go through these services' /internal APIs over the private
+      # network; /internal is excluded from both public Traefik routers.
+      AUTH_INTERNAL_URL: http://auth:7001
+      PAYMENT_INTERNAL_URL: http://payment:7003
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:?set INTERNAL_API_KEY in docker/.env}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:7004/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    networks:
+      - internal
+      - edge
+    deploy:
+      <<: *deploy-defaults
+      labels:
+        - traefik.enable=true
+        - traefik.http.routers.admin.rule=Host(`api.admin.staging.usefiam.com`)
+        - traefik.http.routers.admin.entrypoints=websecure
+        - traefik.http.routers.admin.tls.certresolver=le
+        - traefik.http.services.admin.loadbalancer.server.port=7004
 
 networks:
   internal:

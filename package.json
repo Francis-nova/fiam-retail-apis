@@ -37,7 +37,7 @@
     "migration:generate:admin": "npm run typeorm -- migration:generate -d apps/admin/src/database/data-source.ts",
     "migration:run:admin": "npm run typeorm -- migration:run -d apps/admin/src/database/data-source.ts",
     "migration:run:admin:prod": "typeorm migration:run -d dist/apps/admin/apps/admin/src/database/data-source.js",
-    "seed:admin": "ts-node -r tsconfig-paths/register apps/admin/scripts/seed-super-admin.ts"
+    "seed:admin": "ts-node -r tsconfig-paths/register apps/admin/src/database/seed-super-admin.ts"
   },
   "dependencies": {
     "@nestjs/bullmq": "^11.0.5",

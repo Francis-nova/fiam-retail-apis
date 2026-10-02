@@ -10,6 +10,7 @@ import { DeletionRequestsModule } from './deletion-requests/deletion-requests.mo
 import { PostingsModule } from './postings/postings.module';
 import { CustomersModule } from './customers/customers.module';
 import { TransactionsModule } from './transactions/transactions.module';
+import { DashboardModule } from './dashboard/dashboard.module';
 import { StaffModule } from './staff/staff.module';
 import { HealthController } from './health/health.controller';
 
@@ -27,6 +28,7 @@ import { HealthController } from './health/health.controller';
     AdminAuthModule,
     StaffModule,
     TransactionsModule,
+    DashboardModule,
     CustomersModule,
     PostingsModule,
     DeletionRequestsModule,
