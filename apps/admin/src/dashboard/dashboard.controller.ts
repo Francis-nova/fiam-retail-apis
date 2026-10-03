@@ -1,4 +1,10 @@
-import { Controller, Get, ParseIntPipe, Query, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  ParseIntPipe,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
@@ -16,6 +22,8 @@ export class DashboardController {
   @Get()
   overview(@Query('days', new ParseIntPipe({ optional: true })) days?: number) {
     const allowed = [7, 30, 90];
-    return this.dashboard.overview(allowed.includes(days ?? 30) ? (days ?? 30) : 30);
+    return this.dashboard.overview(
+      allowed.includes(days ?? 30) ? (days ?? 30) : 30,
+    );
   }
 }
