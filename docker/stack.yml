@@ -251,6 +251,21 @@ services:
         - traefik.http.routers.admin.tls.certresolver=le
         - traefik.http.services.admin.loadbalancer.server.port=7004
 
+  # Staff console (static SPA). Built ON the server from the fiam-console repo
+  # (no registry): see docker/README.md "Admin console API" step 7.
+  console:
+    image: fiam-console:staging
+    networks:
+      - edge
+    deploy:
+      <<: *deploy-defaults
+      labels:
+        - traefik.enable=true
+        - traefik.http.routers.console.rule=Host(`console.staging.usefiam.com`)
+        - traefik.http.routers.console.entrypoints=websecure
+        - traefik.http.routers.console.tls.certresolver=le
+        - traefik.http.services.console.loadbalancer.server.port=80
+
 networks:
   internal:
   edge:
