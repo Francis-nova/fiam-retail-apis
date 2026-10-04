@@ -224,6 +224,8 @@ services:
       # true = every staff member must enrol in 2FA before they can sign in.
       ADMIN_REQUIRE_2FA: ${ADMIN_REQUIRE_2FA:-false}
       ADMIN_TOTP_ISSUER: ${ADMIN_TOTP_ISSUER:-Fiam Console}
+      # Staff alerts: emails super admins on sensitive actions via postoffice.
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASSWORD}@rabbitmq:5672
       # Rate-limit counters (shared, survive restarts).
       REDIS_URL: redis://redis:6379
       # Own database, owned by a dedicated role (not the Postgres superuser).
@@ -266,6 +268,9 @@ services:
   # (no registry): see docker/README.md "Admin console API" step 7.
   console:
     image: fiam-console:staging
+    environment:
+      # The admin API origin the console's CSP allows it to call.
+      API_ORIGIN: ${CONSOLE_API_ORIGIN:-https://api.admin.staging.usefiam.com}
     networks:
       - edge
     deploy:

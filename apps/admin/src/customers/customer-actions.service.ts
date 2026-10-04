@@ -80,6 +80,14 @@ export class CustomerActionsService {
     return this.customers.get(id);
   }
 
+  // Support: clears the customer's password/PIN lockouts after they've been
+  // identified. Reason + actor are audited; the CBN device limit is untouched.
+  async clearLockouts(id: string, reason: string, ctx: Ctx) {
+    await this.authClient.call('POST', `/users/${id}/clear-lockouts`);
+    await this.record(ctx, 'customer.lockouts_cleared', id, { reason });
+    return this.customers.get(id);
+  }
+
   async revokeSessions(id: string, reason: string, ctx: Ctx) {
     await this.authClient.call('POST', `/users/${id}/sessions/revoke`);
     await this.record(ctx, 'customer.sessions_revoked', id, { reason });

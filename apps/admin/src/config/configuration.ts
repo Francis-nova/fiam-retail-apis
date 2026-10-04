@@ -15,6 +15,10 @@ export interface AdminConfig {
     accessTtl: string;
     refreshTtlDays: number;
   };
+  rabbitmq: {
+    // Optional: staff alerts (email to super admins) are off without it.
+    url: string;
+  };
   totp: {
     // 32-byte hex key that encrypts staff TOTP secrets at rest.
     encryptionKey: string;
@@ -43,6 +47,7 @@ export default (): AdminConfig => ({
     accessTtl: process.env.ADMIN_JWT_ACCESS_TTL ?? '15m',
     refreshTtlDays: parseInt(process.env.ADMIN_JWT_REFRESH_TTL_DAYS ?? '7', 10),
   },
+  rabbitmq: { url: process.env.RABBITMQ_URL ?? '' },
   totp: {
     encryptionKey: process.env.ADMIN_TOTP_ENCRYPTION_KEY as string,
     issuer: process.env.ADMIN_TOTP_ISSUER ?? 'Fiam Console',

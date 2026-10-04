@@ -15,6 +15,7 @@ export enum EmailTemplate {
   DELETION_REQUEST_REJECTED = 'deletion-request-rejected',
   ACCOUNT_CLOSED = 'account-closed',
   SECURITY_ALERT = 'security-alert',
+  STAFF_ALERT = 'staff-alert',
 }
 
 type SubjectResolver = string | ((data: Record<string, string>) => string);
@@ -42,6 +43,7 @@ const EMAIL_SUBJECTS: Record<EmailTemplate, SubjectResolver> = {
     "We couldn't delete your account yet",
   [EmailTemplate.ACCOUNT_CLOSED]: 'Your Fiam account has been closed',
   [EmailTemplate.SECURITY_ALERT]: 'Security alert on your Fiam account',
+  [EmailTemplate.STAFF_ALERT]: (data) => `[Fiam Console] ${data.title}`,
 };
 
 export function isEmailTemplate(value: string): value is EmailTemplate {

@@ -77,6 +77,8 @@ jobs:
       group: deploy-staging
       cancel-in-progress: false
     steps:
+      - uses: actions/checkout@v4
+
       - name: Compute lowercase image name
         run: echo "IMAGE=ghcr.io/$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')/fiam-retail-apis" >> "$GITHUB_ENV"
 
@@ -126,6 +128,32 @@ jobs:
             docker service rm "$name" >/dev/null
             [ "$status" -eq 0 ] || { echo "migrations for $app failed" >&2; exit 1; }
           done
+          REMOTE
+
+      # The console's read-only Postgres role gets column-level grants that are
+      # snapshotted when docker/postgres/admin-roles.sql runs, so a column added
+      # by this deploy's migrations stays invisible to the admin API until the
+      # script is re-run. It is idempotent, so run it every deploy (after the
+      # migrations, before the new code rolls).
+      - name: Refresh admin read-only grants
+        run: |
+          SSH_TARGET="${{ secrets.STAGING_SSH_USER }}@${{ secrets.STAGING_SSH_HOST }}"
+          SSH_OPTS="-i $HOME/.ssh/id_deploy -o IdentitiesOnly=yes"
+          if ! ssh $SSH_OPTS "$SSH_TARGET" 'docker service inspect fiam_admin >/dev/null 2>&1'; then
+            echo "fiam_admin is not deployed yet - skipping"
+            exit 0
+          fi
+          scp $SSH_OPTS docker/postgres/admin-roles.sql "$SSH_TARGET:/tmp/admin-roles.sql"
+          ssh $SSH_OPTS "$SSH_TARGET" bash -s <<'REMOTE'
+          set -euo pipefail
+          cd /opt/fiam/apis/docker
+          set -a; . ./.env; set +a
+          docker exec -i "$(docker ps -q -f name=fiam_postgres)" \
+            psql -U "$POSTGRES_USER" -v ON_ERROR_STOP=1 \
+              -v admin_pw="$ADMIN_DB_PASSWORD" -v ro_pw="$READONLY_DB_PASSWORD" \
+            < /tmp/admin-roles.sql > /dev/null
+          rm -f /tmp/admin-roles.sql
+          echo "admin read-only grants refreshed"
           REMOTE
 
       # Rolls each service to the immutable :<sha> tag (not :staging) so Swarm

@@ -54,6 +54,9 @@ GRANT ALL ON SCHEMA public TO fiam_admin_app;
 
 -- ------------------------------------------- read-only: auth service data
 \connect :"auth_db"
+-- One transaction: the REVOKE + re-GRANT below must never be visible half-done,
+-- or the console's reads would fail for the instant in between on a re-run.
+BEGIN;
 GRANT CONNECT ON DATABASE :"auth_db" TO fiam_readonly;
 GRANT USAGE ON SCHEMA public TO fiam_readonly;
 -- Start from nothing so a re-run converges on exactly the list below.
@@ -86,9 +89,13 @@ BEGIN
     EXECUTE format('GRANT SELECT (%s) ON public.%I TO fiam_readonly', cols, spec.tbl);
   END LOOP;
 END $$;
+COMMIT;
 
 -- ----------------------------------------- read-only: payment service data
 \connect :"payment_db"
+-- One transaction: the REVOKE + re-GRANT below must never be visible half-done,
+-- or the console's reads would fail for the instant in between on a re-run.
+BEGIN;
 GRANT CONNECT ON DATABASE :"payment_db" TO fiam_readonly;
 GRANT USAGE ON SCHEMA public TO fiam_readonly;
 REVOKE ALL ON ALL TABLES IN SCHEMA public FROM fiam_readonly;
@@ -118,3 +125,4 @@ BEGIN
     EXECUTE format('GRANT SELECT (%s) ON public.%I TO fiam_readonly', cols, spec.tbl);
   END LOOP;
 END $$;
+COMMIT;

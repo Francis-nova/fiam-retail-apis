@@ -27,6 +27,11 @@ interface UserRow {
   transaction_pin_set_at: Date | null;
   created_at: Date;
   closed_at: Date | null;
+  pin_failed_attempts: number;
+  pin_locked_until: Date | null;
+  password_failed_attempts: number;
+  password_locked_until: Date | null;
+  device_limit_until: Date | null;
 }
 
 interface WalletRow {
@@ -42,8 +47,15 @@ const COLUMNS = `
   tier_upgrade_submitted_at, email_verified_at, phone_verified_at, bvn,
   bvn_verified_at, nin, nin_verified_at,
   to_char(date_of_birth, 'YYYY-MM-DD') AS date_of_birth, transaction_pin_set_at,
-  created_at, closed_at
+  created_at, closed_at, pin_failed_attempts, pin_locked_until,
+  password_failed_attempts, password_locked_until, device_limit_until
 `;
+
+const lockState = (failedAttempts: number, lockedUntil: Date | null) => ({
+  failedAttempts,
+  lockedUntil,
+  isLocked: !!lockedUntil && lockedUntil > new Date(),
+});
 
 // BVN/NIN are government identifiers — the console only ever shows the tail.
 const mask = (v: string | null) =>
@@ -212,6 +224,20 @@ export class CustomersService {
       bvnVerifiedAt: u.bvn_verified_at,
       ninVerifiedAt: u.nin_verified_at,
       pinSet: !!u.transaction_pin_set_at,
+      // Brute-force protection state (5 wrong tries lock for 15 minutes) and
+      // the CBN new-device outflow limit — what support needs to explain "I
+      // can't sign in / can't send more than ₦20,000".
+      protection: {
+        password: lockState(
+          u.password_failed_attempts,
+          u.password_locked_until,
+        ),
+        pin: lockState(u.pin_failed_attempts, u.pin_locked_until),
+        newDeviceLimitUntil:
+          u.device_limit_until && u.device_limit_until > new Date()
+            ? u.device_limit_until
+            : null,
+      },
       kycDocuments: docs.map((d) => ({
         type: d.doc_type,
         idType: d.id_type,

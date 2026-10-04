@@ -270,6 +270,16 @@ export class UsersService {
     return ok;
   }
 
+  /** Support action: clears the password and PIN lockouts (not the device limit). */
+  async clearLockouts(userId: string): Promise<void> {
+    await this.usersRepo.query(
+      `UPDATE users SET password_failed_attempts = 0, password_locked_until = NULL,
+                        pin_failed_attempts = 0, pin_locked_until = NULL
+        WHERE id = $1`,
+      [userId],
+    );
+  }
+
   // --- New-device outflow limit (CBN circular, 12 Mar 2026) ---
 
   get deviceLimitHours(): number {

@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AuditLog } from './entities/audit-log.entity';
+import { AlertsService } from './alerts.service';
 
 export interface AuditEntry {
   staffId?: string | null;
@@ -19,6 +20,7 @@ export class AuditService {
 
   constructor(
     @InjectRepository(AuditLog) private readonly repo: Repository<AuditLog>,
+    private readonly alerts: AlertsService,
   ) {}
 
   // Awaited by callers for state-changing actions (so a failed audit write
@@ -35,6 +37,8 @@ export class AuditService {
         ip: entry.ip ?? null,
       }),
     );
+    // After the row is safely written; never awaited, never throws.
+    void this.alerts.notify(entry);
   }
 
   async recordSafe(entry: AuditEntry): Promise<void> {

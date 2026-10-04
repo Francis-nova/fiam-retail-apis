@@ -213,6 +213,87 @@ in that repo provides the SPA routing and security headers (strict CSP whose
 API — Vercel *preview* URLs have different origins and will be blocked by
 CORS unless added to `ADMIN_CORS_ORIGIN` (comma-separated).
 
+## Admin console hardening
+
+**Two-factor sign-in (TOTP).** `ADMIN_TOTP_ENCRYPTION_KEY` (64 hex chars,
+`openssl rand -hex 32`) is required: it encrypts every staff authenticator
+secret at rest. **Keep a copy outside the server** — if it is lost every
+enrolled authenticator becomes unreadable and each staff member must be reset
+(super admin → Staff → *Reset 2FA*) and re-enrol. Rollout:
+
+1. Deploy with `ADMIN_REQUIRE_2FA=false`; each person enrols from the console
+   (*Security* link, bottom-left) and saves their recovery codes.
+2. Once everyone is enrolled set `ADMIN_REQUIRE_2FA=true`
+   (`docker service update --env-add ADMIN_REQUIRE_2FA=true fiam_admin`, and in
+   `docker/.env`). From then on anyone who isn't enrolled is walked through
+   enrolment at their next sign-in, and 2FA can't be turned off.
+3. Lost phone + lost recovery codes: a super admin uses *Reset 2FA* on the
+   person's page. Lost the *only* super admin's device: run the seed script
+   for a new super admin (see "Migrate and seed" above) and reset the old one.
+
+**IP allowlist.** `ADMIN_ALLOWED_IPS` is a comma-separated list of IPs/CIDRs
+(`203.0.113.7, 198.51.100.0/24`). Blank/unset = **not enforced**. When set,
+every request from elsewhere gets `403` (except `/health`). It reads the
+client address Traefik forwards (`trust proxy` = 1 hop), so it only works with
+Traefik directly in front. A malformed entry fails the boot on purpose.
+Set it with `docker service update --env-add ADMIN_ALLOWED_IPS=... fiam_admin`
+(and in `docker/.env`); clear it with `--env-rm`. Note this restricts the
+*API*, i.e. the staff's browsers — it must contain the office/VPN egress IPs
+or nobody can sign in.
+
+**Staff alerts.** With `RABBITMQ_URL` set on `fiam_admin` (it is in
+`stack.yml`), every active super admin is emailed when someone creates,
+changes, resets or deletes a staff account, a staff account locks, 2FA is
+turned off, a manual posting is approved/fails, or a customer account is
+closed (`ALERT_ACTIONS` in `apps/admin/src/audit/alerts.service.ts`).
+
+**Audit log.** `audit_logs` is append-only (database triggers reject
+`UPDATE`/`DELETE`/`TRUNCATE`). Combine with off-box backups below.
+
+**Idle sign-out.** The console signs staff out after 30 idle minutes
+(`VITE_IDLE_MINUTES` at build time; `0` disables).
+
+**Read-only grants.** CI re-runs `postgres/admin-roles.sql` on every deploy so
+columns added by new migrations are visible to the admin API. If you ever run
+a migration by hand, re-run it too (step 4 above).
+
+## Backups
+
+`backup/backup.sh` dumps `fiam_auth`, `fiam_payment` and `fiam_admin`
+(`pg_dump -Fc`), the database roles, and the MinIO volume (KYC documents) into
+`/var/backups/fiam/<UTC timestamp>/` with a `SHA256SUMS` file, and prunes
+backups older than `BACKUP_KEEP_DAYS` (default 14). `backup/restore-check.sh`
+restores the newest backup into throwaway databases and counts the rows, so
+you *know* it works — run it after setting up and after any schema change.
+
+```
+# nightly at 02:00 UTC (/etc/cron.d/fiam-backup)
+0 2 * * * root set -a; . /opt/fiam/apis/docker/.env; set +a; /opt/fiam/apis/docker/backup/backup.sh >> /var/log/fiam-backup.log 2>&1
+```
+
+**A backup on the same disk is not disaster recovery.** Set
+`BACKUP_RCLONE_REMOTE` (e.g. `s3:fiam-backups/staging`, after `rclone config`)
+so each run is also copied off the server. Also store `docker/.env` (it holds
+`ADMIN_TOTP_ENCRYPTION_KEY` and every secret) somewhere safe — a restored
+database is useless without them.
+
+## Production checklist (admin console)
+
+Nothing below exists yet; staging values are the only ones in the repo.
+
+- [ ] Separate production stack: own Postgres, Redis, RabbitMQ, MinIO and
+      **fresh secrets** (never reuse staging's `INTERNAL_API_KEY`, JWT secrets,
+      `ADMIN_TOTP_ENCRYPTION_KEY`, DB passwords).
+- [ ] DNS + TLS for the console and API hostnames.
+- [ ] Build the console with `VITE_API_URL=<prod admin API origin>` and run it
+      with `API_ORIGIN=<same origin>` (the CSP follows it — no code change).
+- [ ] `ADMIN_CORS_ORIGIN` = the console's exact production origin.
+- [ ] `ADMIN_REQUIRE_2FA=true`, `ADMIN_ALLOWED_IPS` set to the office/VPN.
+- [ ] At least **two** super admins, each with 2FA and saved recovery codes.
+- [ ] Backups scheduled, copied off-box, and a restore check passed.
+- [ ] Error tracking + uptime monitoring on `/health` of every service.
+- [ ] Run `postgres/admin-roles.sql` after the auth/payment migrations.
+
 ## Deploying a new build
 
 Once CI has pushed a new image for a commit on `staging`:

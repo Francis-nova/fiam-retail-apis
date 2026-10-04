@@ -58,6 +58,16 @@ export class InternalController {
     return { transferLimit: await this.authService.transferLimit(id) };
   }
 
+  // Support: lets a customer back in after repeated wrong password/PIN tries.
+  // The new-device transfer limit is a CBN rule and is deliberately NOT lifted.
+  @Post('users/:id/clear-lockouts')
+  @HttpCode(200)
+  async clearLockouts(@Param('id', new ParseUUIDPipe()) id: string) {
+    await this.usersService.findById(id);
+    await this.usersService.clearLockouts(id);
+    return { cleared: true };
+  }
+
   // Current outflow restriction (new-device limit), for the transfer screen.
   @Get('users/:id/transfer-limit')
   async transferLimit(@Param('id', new ParseUUIDPipe()) id: string) {

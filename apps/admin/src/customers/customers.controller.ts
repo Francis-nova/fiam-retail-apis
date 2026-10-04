@@ -189,6 +189,19 @@ export class CustomersController {
     return this.actions.suspend(id, dto.reason, { actor, ip });
   }
 
+  // Support and compliance can unlock a customer who locked themselves out.
+  @Post(':id/clear-lockouts')
+  @HttpCode(200)
+  @Roles(StaffRole.SUPPORT, StaffRole.COMPLIANCE)
+  clearLockouts(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() dto: ReasonDto,
+    @CurrentStaff() actor: AuthenticatedStaff,
+    @ClientIp() ip: string | null,
+  ) {
+    return this.actions.clearLockouts(id, dto.reason, { actor, ip });
+  }
+
   @Post(':id/reactivate')
   @HttpCode(200)
   @Roles(...REVIEWER_ROLES)
