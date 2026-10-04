@@ -5,6 +5,7 @@ import { KycDocument } from '../kyc/entities/kyc-document.entity';
 import { StorageModule } from '../storage/storage.module';
 import { MessagingModule } from '../messaging/messaging.module';
 import { DeletionModule } from '../deletion/deletion.module';
+import { AuthModule } from '../auth/auth.module';
 import { InternalController } from './internal.controller';
 import { InternalKeyGuard } from './internal-key.guard';
 import { AccountAdminService } from './account-admin.service';
@@ -13,6 +14,7 @@ import { TokensModule } from '../tokens/tokens.module';
 
 @Module({
   imports: [
+    AuthModule,
     UsersModule,
     SessionsModule,
     TokensModule,

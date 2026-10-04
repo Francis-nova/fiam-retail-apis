@@ -16,7 +16,7 @@ import { HealthController } from './health/health.controller';
 
 @Module({
   imports: [
-    RateLimitModule,
+    RateLimitModule.forRoot('auth'),
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: 'apps/auth/.env',

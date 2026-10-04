@@ -7,3 +7,4 @@ export * from './messaging/notification.message';
 export * from './logging/redact';
 export * from './http/harden';
 export * from './http/rate-limit.module';
+export * from './http/redis-throttler.storage';

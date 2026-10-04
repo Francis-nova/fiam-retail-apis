@@ -39,6 +39,7 @@ import {
 import { ResolveRecipientDto } from './dto/resolve-recipient.dto';
 import { InitiatePayoutDto } from './dto/initiate-payout.dto';
 import { calculateTransferFee } from './fee.util';
+import { PinVerifierService } from './pin-verifier.service';
 
 @Injectable()
 export class PayoutsService {
@@ -58,6 +59,7 @@ export class PayoutsService {
     @InjectQueue(PAYOUT_STATUS_QUERY_QUEUE)
     private readonly queue: Queue<PayoutStatusQueryJobData>,
     private readonly configService: ConfigService<PaymentConfig, true>,
+    private readonly pinVerifier: PinVerifierService,
   ) {}
 
   private transferType(bankCode: string): ProviderTransferType {
@@ -114,6 +116,9 @@ export class PayoutsService {
     userId: string,
     dto: InitiatePayoutDto,
   ): Promise<Transaction> {
+    // First thing, before anything is looked up or reserved.
+    await this.pinVerifier.assertValid(userId, dto.pin);
+
     const provider = this.registry.getProviderForCurrency(CurrencyCode.NGN);
     const { walletName } = this.configService.get('vfd', { infer: true });
 

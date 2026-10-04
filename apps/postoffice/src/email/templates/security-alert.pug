@@ -1,0 +1,13 @@
+extends layout
+include mixins
+
+block content
+  +heading('Security alert')
+  +greeting(firstName)
+  p(style="margin:0 0 20px 0; font-size:15px; line-height:1.6; color:#000909;")
+    | Someone entered the wrong #{what} on your Fiam account several times in a row. For your protection we've locked it for 15 minutes.
+  +detailsCard()
+    +row('Time', occurredAt)
+    +row('IP address', ipAddress)
+  p(style="margin:0; font-size:14px; line-height:1.6; color:#7F7F7F;")
+    | If this was you, wait 15 minutes and try again. If it wasn't, change your password right away and contact support.

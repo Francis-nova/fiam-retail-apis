@@ -17,7 +17,7 @@ import { InternalModule } from './internal/internal.module';
 
 @Module({
   imports: [
-    RateLimitModule,
+    RateLimitModule.forRoot('payment'),
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: 'apps/payment/.env',

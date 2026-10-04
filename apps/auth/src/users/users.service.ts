@@ -220,12 +220,14 @@ export class UsersService {
    * runs, so a burst of parallel guesses can't all pass a stale "not locked"
    * read: once MAX_FAILED_ATTEMPTS are reserved the row is locked and every
    * further call is rejected without being evaluated. A correct answer clears
-   * the counter.
+   * the counter. `onLockout` fires once, on the wrong guess that trips the
+   * lock, so the owner can be alerted exactly once per attack.
    */
   async guardedVerify(
     userId: string,
     kind: SecretKind,
     check: () => Promise<boolean>,
+    onLockout?: () => void,
   ): Promise<boolean> {
     // `kind` is a closed union, never user input, so interpolating the column
     // prefix is safe.
@@ -240,7 +242,7 @@ export class UsersService {
                                THEN now() + make_interval(secs => $3)
                                ELSE NULL END
        WHERE id = $1 AND (${lockedUntil} IS NULL OR ${expired})
-       RETURNING id`,
+       RETURNING ${lockedUntil} IS NOT NULL AS locked`,
       [userId, MAX_FAILED_ATTEMPTS, LOCKOUT_SECONDS],
     );
     // pg returns [rows, affectedCount] for UPDATE ... RETURNING.
@@ -253,6 +255,9 @@ export class UsersService {
     }
 
     const ok = await check();
+    if (!ok && (rows[0] as { locked?: boolean }).locked) {
+      onLockout?.();
+    }
     if (ok) {
       await this.usersRepo.query(
         `UPDATE users SET ${attempts} = 0, ${lockedUntil} = NULL WHERE id = $1`,

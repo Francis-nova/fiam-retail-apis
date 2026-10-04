@@ -9,6 +9,7 @@ import { Repository } from 'typeorm';
 import { PushTemplate } from '@app/common';
 import { PasswordService } from '../credentials/password.service';
 import { NotificationPublisher } from '../messaging/notification.publisher';
+import { SecurityAlertsService } from '../messaging/security-alerts.service';
 import { UserStatus } from '../users/entities/user.entity';
 import { UsersService } from '../users/users.service';
 import {
@@ -29,6 +30,7 @@ export class DeletionService {
     private readonly users: UsersService,
     private readonly passwords: PasswordService,
     private readonly notifications: NotificationPublisher,
+    private readonly securityAlerts: SecurityAlertsService,
   ) {}
 
   private view(r: AccountDeletionRequest | null) {
@@ -60,8 +62,11 @@ export class DeletionService {
     if (user.status !== UserStatus.ACTIVE) {
       throw new BadRequestException('This account cannot request deletion');
     }
-    const passwordOk = await this.users.guardedVerify(userId, 'password', () =>
-      this.passwords.verify(user.passwordHash, password),
+    const passwordOk = await this.users.guardedVerify(
+      userId,
+      'password',
+      () => this.passwords.verify(user.passwordHash, password),
+      () => this.securityAlerts.lockout(user, 'password'),
     );
     if (!passwordOk) {
       // 400, not 401: a wrong password here must not sign the customer out.

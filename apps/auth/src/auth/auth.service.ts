@@ -27,6 +27,7 @@ import { PendingLogin } from './entities/pending-login.entity';
 import { generateRefreshToken } from '../tokens/token.util';
 import { PaymentProvisioningPublisher } from '../messaging/payment-provisioning.publisher';
 import { NotificationPublisher } from '../messaging/notification.publisher';
+import { SecurityAlertsService } from '../messaging/security-alerts.service';
 
 export interface RequestMeta {
   deviceId?: string;
@@ -92,6 +93,7 @@ export class AuthService {
     @Inject(BVN_PROVIDER) private readonly bvnProvider: BvnProvider,
     private readonly paymentProvisioningPublisher: PaymentProvisioningPublisher,
     private readonly notificationPublisher: NotificationPublisher,
+    private readonly securityAlerts: SecurityAlertsService,
   ) {}
 
   private sendEmailOtp(
@@ -235,6 +237,7 @@ export class AuthService {
       user.id,
       'password',
       () => this.passwordService.verify(user.passwordHash, password),
+      () => this.securityAlerts.lockout(user, 'password', meta.ipAddress),
     );
     if (!passwordMatches) {
       throw new UnauthorizedException('Invalid credentials');
@@ -272,6 +275,10 @@ export class AuthService {
       );
       return { ...tokens, pinRequired: false, progress: progressOf(user) };
     }
+
+    // The right password from a device we haven't seen: the PIN challenge
+    // below still blocks them, but the owner should hear about it.
+    this.securityAlerts.newDevice(user, meta);
 
     const loginTicket = generateRefreshToken();
     await this.pendingLoginsRepo.save(
@@ -320,6 +327,7 @@ export class AuthService {
       user.id,
       'pin',
       () => this.passwordService.verify(pinHash, pin),
+      () => this.securityAlerts.lockout(user, 'pin', meta.ipAddress),
     );
     if (!pinMatches) {
       await this.pendingLoginsRepo.update(pending.id, {
@@ -382,8 +390,11 @@ export class AuthService {
       throw new BadRequestException('No transaction PIN set');
     }
     const pinHash = user.transactionPinHash;
-    const matches = await this.usersService.guardedVerify(userId, 'pin', () =>
-      this.passwordService.verify(pinHash, pin),
+    const matches = await this.usersService.guardedVerify(
+      userId,
+      'pin',
+      () => this.passwordService.verify(pinHash, pin),
+      () => this.securityAlerts.lockout(user, 'pin'),
     );
     if (!matches) {
       throw new UnauthorizedException('Incorrect PIN');
@@ -407,6 +418,7 @@ export class AuthService {
       userId,
       'pin',
       () => this.passwordService.verify(currentHash, currentPin),
+      () => this.securityAlerts.lockout(user, 'pin'),
     );
     if (!currentMatches) {
       throw new UnauthorizedException('Current PIN is incorrect');
@@ -435,6 +447,7 @@ export class AuthService {
       userId,
       'password',
       () => this.passwordService.verify(user.passwordHash, currentPassword),
+      () => this.securityAlerts.lockout(user, 'password'),
     );
     if (!currentMatches) {
       throw new UnauthorizedException('Current password is incorrect');

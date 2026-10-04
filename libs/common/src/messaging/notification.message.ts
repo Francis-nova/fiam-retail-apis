@@ -41,4 +41,9 @@ export enum PushTemplate {
   DELETION_REJECTED = 'push-deletion-rejected',
   KYC_APPROVED = 'push-kyc-approved',
   KYC_REJECTED = 'push-kyc-rejected',
+  // Someone has been guessing the customer's password/PIN until it locked.
+  // data: { kind: 'password' | 'pin' }
+  SECURITY_LOCKOUT = 'push-security-lockout',
+  // Correct password entered on a device we haven't seen before.
+  SECURITY_NEW_DEVICE = 'push-security-new-device',
 }

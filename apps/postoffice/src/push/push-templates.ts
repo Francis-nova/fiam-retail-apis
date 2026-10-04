@@ -68,6 +68,18 @@ export function renderPush(
         body: 'Your account has been upgraded to Tier 3. Higher limits are now available.',
         data: { type: 'kyc' },
       };
+    case PushTemplate.SECURITY_LOCKOUT:
+      return {
+        title: 'Security alert',
+        body: `Someone entered the wrong ${data.kind === 'pin' ? 'PIN' : 'password'} on your Fiam account several times, so we locked it for 15 minutes. If this wasn't you, change your password.`,
+        data: { type: 'security' },
+      };
+    case PushTemplate.SECURITY_NEW_DEVICE:
+      return {
+        title: 'New device sign-in attempt',
+        body: "Someone signed in to your Fiam account from a new device. If this wasn't you, change your password right away.",
+        data: { type: 'security' },
+      };
     case PushTemplate.KYC_REJECTED:
       return {
         title: 'Update needed on your verification',
