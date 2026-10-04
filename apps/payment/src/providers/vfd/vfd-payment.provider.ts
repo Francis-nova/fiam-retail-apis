@@ -299,6 +299,7 @@ export class VfdPaymentProvider implements PaymentProvider {
       clientId: body.data.clientId ?? '',
       clientName: body.data.client ?? '',
       bvn: body.data.bvn ?? null,
+      balance: body.data.accountBalance ?? null,
     };
   }
 

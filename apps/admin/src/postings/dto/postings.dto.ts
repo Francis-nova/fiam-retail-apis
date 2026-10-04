@@ -22,6 +22,12 @@ export class CreatePostingDto {
   @Matches(/^\d{1,11}(\.\d{1,4})?$/, { message: 'Enter a valid amount' })
   amount: string;
 
+  // Assigning an UNMATCHED deposit: the transaction to resolve. The type and
+  // amount are then taken from that deposit, not from this request.
+  @IsOptional()
+  @IsUUID()
+  sourceTransactionId?: string;
+
   // Internal justification; never shown to the customer.
   @IsString()
   @MinLength(5, { message: 'Explain why (at least 5 characters)' })

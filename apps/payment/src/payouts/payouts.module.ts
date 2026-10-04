@@ -27,5 +27,6 @@ import { NotificationsModule } from '../notifications/notifications.module';
   ],
   controllers: [PayoutsController],
   providers: [PayoutsService, PayoutStatusQueryProcessor, PinVerifierService],
+  exports: [PayoutsService],
 })
 export class PayoutsModule {}

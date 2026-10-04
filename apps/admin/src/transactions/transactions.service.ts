@@ -135,9 +135,8 @@ export class TransactionsService {
     };
   }
 
-  async list(q: ListTransactionsQueryDto) {
-    const page = q.page ?? 1;
-    const pageSize = q.pageSize ?? 25;
+  // The WHERE clause shared by the list screen and the CSV export.
+  private async buildFilter(q: ListTransactionsQueryDto) {
     const params: unknown[] = [];
     const where: string[] = [];
     const add = (v: unknown) => {
@@ -175,6 +174,13 @@ export class TransactionsService {
     }
 
     const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+    return { clause, params };
+  }
+
+  async list(q: ListTransactionsQueryDto) {
+    const page = q.page ?? 1;
+    const pageSize = q.pageSize ?? 25;
+    const { clause, params } = await this.buildFilter(q);
     const [rows, totals, byStatus] = (await Promise.all([
       this.payment.query(
         `SELECT ${SELECT} ${FROM} ${clause}
@@ -208,6 +214,46 @@ export class TransactionsService {
       pageSize,
       summary: byStatus,
     };
+  }
+
+  /** Every row matching the filter (capped), for the CSV export. */
+  async exportRows(q: ListTransactionsQueryDto, max: number) {
+    const { clause, params } = await this.buildFilter(q);
+    const rows: TxRow[] = await this.payment.query(
+      `SELECT ${SELECT} ${FROM} ${clause}
+        ORDER BY t.created_at DESC, t.id LIMIT ${max + 1}`,
+      params,
+    );
+    const truncated = rows.length > max;
+    const page = truncated ? rows.slice(0, max) : rows;
+    const customers = await this.customers(
+      page.map((r) => r.user_id).filter((id): id is string => !!id),
+    );
+    return {
+      truncated,
+      items: page.map((r) =>
+        this.listView(r, r.user_id ? customers.get(r.user_id) : undefined),
+      ),
+    };
+  }
+
+  /** The bits of a deposit needed to decide whether it can be assigned. */
+  async depositForAssignment(id: string) {
+    const rows: {
+      id: string;
+      status: string;
+      type: string;
+      amount: string;
+      currency: string;
+      wallet_id: string | null;
+      reference: string;
+    }[] = await this.payment.query(
+      `SELECT id, status, type, amount::text, currency, wallet_id, reference
+         FROM transactions WHERE id = $1`,
+      [id],
+    );
+    if (!rows[0]) throw new NotFoundException('Transaction not found');
+    return rows[0];
   }
 
   async get(id: string) {

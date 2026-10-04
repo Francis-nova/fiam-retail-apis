@@ -43,6 +43,8 @@ export interface AuthConfig {
     endpoint: string;
     port: number;
     useSsl: boolean;
+    region: string;
+    autoCreateBucket: boolean;
     accessKey: string;
     secretKey: string;
     bucket: string;
@@ -97,6 +99,12 @@ export default (): AuthConfig => ({
     endpoint: process.env.MINIO_ENDPOINT ?? 'localhost',
     port: parseInt(process.env.MINIO_PORT ?? '9000', 10),
     useSsl: process.env.MINIO_USE_SSL === 'true',
+    // S3 region — needed by Hetzner Object Storage (fsn1 / nbg1 / hel1);
+    // blank for a local MinIO.
+    region: process.env.MINIO_REGION ?? '',
+    // false when the bucket is created out-of-band (Hetzner): the app's
+    // credentials then only need object read/write, not bucket admin.
+    autoCreateBucket: process.env.MINIO_AUTO_CREATE_BUCKET !== 'false',
     accessKey: process.env.MINIO_ACCESS_KEY ?? '',
     secretKey: process.env.MINIO_SECRET_KEY ?? '',
     bucket: process.env.MINIO_BUCKET ?? 'fiam-kyc-documents',

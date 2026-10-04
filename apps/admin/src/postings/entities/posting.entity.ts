@@ -41,6 +41,11 @@ export class Posting {
   @Column({ name: 'wallet_id', type: 'uuid' })
   walletId: string;
 
+  // Set when this posting resolves an UNMATCHED deposit (the credit is then
+  // applied to that very transaction instead of creating a new one).
+  @Column({ name: 'source_transaction_id', type: 'uuid', nullable: true })
+  sourceTransactionId: string | null;
+
   @Column({ type: 'varchar', length: 8 })
   currency: string;
 

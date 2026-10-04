@@ -7,7 +7,10 @@
 #
 #   BACKUP_DIR            where dumps go            (default /var/backups/fiam)
 #   BACKUP_KEEP_DAYS      local retention in days   (default 14)
-#   BACKUP_RCLONE_REMOTE  e.g. "s3:fiam-backups/staging" (optional, needs rclone)
+#   BACKUP_RCLONE_REMOTE  e.g. "hetzner:fiam-backups/staging" (optional, needs rclone;
+#                         configure the remote with RCLONE_CONFIG_<NAME>_* env vars)
+#   BACKUP_ENCRYPTION_PASSPHRASE  REQUIRED when uploading off-box: every file is
+#                         AES-256 encrypted first (dumps contain personal data)
 set -euo pipefail
 
 BACKUP_DIR="${BACKUP_DIR:-/var/backups/fiam}"
@@ -33,9 +36,13 @@ done
 # Roles aren't part of a per-database dump (fiam_admin_app, fiam_readonly...).
 docker exec "$PG" pg_dumpall -U "${POSTGRES_USER:-postgres}" --roles-only > "$OUT/roles.sql"
 
-# KYC documents live in the MinIO volume.
+# KYC documents: archive the in-stack MinIO volume. Skipped once documents live
+# in external object storage (OBJECT_STORAGE_ENDPOINT is anything but "minio"):
+# that data isn't on this box, so protect it with bucket versioning there.
 MINIO_VOL="$(docker volume ls -q | grep -E 'minio-data$' | head -1 || true)"
-if [ -n "$MINIO_VOL" ]; then
+if [ "${OBJECT_STORAGE_ENDPOINT:-minio}" != "minio" ]; then
+  echo "documents are in external object storage - skipping the MinIO volume archive"
+elif [ -n "$MINIO_VOL" ]; then
   echo "archiving MinIO volume $MINIO_VOL"
   docker run --rm -v "$MINIO_VOL":/data:ro -v "$OUT":/backup alpine \
     tar czf /backup/minio-data.tgz -C /data .
@@ -45,8 +52,20 @@ fi
 echo "backup written to $OUT ($(du -sh "$OUT" | cut -f1))"
 
 if [ -n "${BACKUP_RCLONE_REMOTE:-}" ]; then
-  echo "copying off-box to $BACKUP_RCLONE_REMOTE"
-  rclone copy "$OUT" "$BACKUP_RCLONE_REMOTE/$STAMP"
+  # Never ship personal data off the box in the clear.
+  [ -n "${BACKUP_ENCRYPTION_PASSPHRASE:-}" ] || {
+    echo "refusing to upload: set BACKUP_ENCRYPTION_PASSPHRASE" >&2
+    exit 1
+  }
+  ENC="$OUT.enc"
+  mkdir -p "$ENC"
+  for f in "$OUT"/*; do
+    openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt \
+      -pass env:BACKUP_ENCRYPTION_PASSPHRASE -in "$f" -out "$ENC/$(basename "$f").enc"
+  done
+  echo "copying encrypted backup off-box to $BACKUP_RCLONE_REMOTE"
+  rclone copy "$ENC" "$BACKUP_RCLONE_REMOTE/$STAMP"
+  rm -rf "$ENC"
 fi
 
 # Retention (local only; manage the remote's lifecycle on the remote).

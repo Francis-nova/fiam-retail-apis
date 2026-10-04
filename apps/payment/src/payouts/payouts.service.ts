@@ -241,6 +241,68 @@ export class PayoutsService {
     return this.applyTransferResult(transaction, result);
   }
 
+  /**
+   * Asks the provider where a payout stands and applies the answer. Shared by
+   * the background re-query worker and the admin console's "re-query" action,
+   * so both behave identically. Safe to call repeatedly: a payout that already
+   * reached SUCCESSFUL/FAILED is left alone.
+   */
+  async syncPayoutStatus(
+    transactionId: string,
+  ): Promise<
+    | 'NOT_FOUND'
+    | 'ALREADY_FINAL'
+    | 'SUCCESSFUL'
+    | 'FAILED'
+    | 'HOLD'
+    | 'UNRESOLVED'
+  > {
+    const transaction = await this.transactionsRepo.findOneBy({
+      id: transactionId,
+    });
+    if (!transaction) return 'NOT_FOUND';
+    if (
+      transaction.status === TransactionStatus.SUCCESSFUL ||
+      transaction.status === TransactionStatus.FAILED
+    ) {
+      return 'ALREADY_FINAL';
+    }
+
+    const provider = this.registry.getProviderByKey(transaction.provider);
+    const result = await provider.queryTransferStatus(transaction.reference);
+
+    await this.transactionsRepo.update(transactionId, {
+      externalId: result.externalId ?? transaction.externalId,
+      providerStatusCode: result.providerStatusCode,
+      // Cast: same QueryDeepPartialEntity/jsonb workaround as
+      // TransactionsService.recordPayin.
+      rawPayload: (result.rawPayload ?? transaction.rawPayload) as never,
+    });
+
+    if (result.outcome === 'SUCCESSFUL') {
+      await this.transactionsRepo.update(transactionId, {
+        status: TransactionStatus.SUCCESSFUL,
+        verifiedAt: new Date(),
+      });
+      void this.notifications.notifyTransaction(
+        transaction,
+        'PAYOUT_SUCCESSFUL',
+      );
+      return 'SUCCESSFUL';
+    }
+    if (result.outcome === 'FAILED') {
+      await this.reverseFailedPayout(transactionId);
+      return 'FAILED';
+    }
+    if (result.outcome === 'HOLD') {
+      // Terminal for polling purposes: the provider told us not to reverse,
+      // so this waits for manual review.
+      this.holdForReview(transaction, result.providerStatusCode);
+      return 'HOLD';
+    }
+    return 'UNRESOLVED';
+  }
+
   // Payout amount already sent (or in flight) inside the limit window. Failed
   // payouts are refunded, so they don't count against the cap. The limit is
   // outflow-only — inflows are never restricted by it.

@@ -17,6 +17,7 @@ import { AuditController } from '../audit/audit.controller';
 import { TransactionsController } from '../transactions/transactions.controller';
 import { DashboardController } from '../dashboard/dashboard.controller';
 import { DeletionRequestsController } from '../deletion-requests/deletion-requests.controller';
+import { ReconciliationController } from '../reconciliation/reconciliation.controller';
 
 const R = StaffRole;
 const reflector = new Reflector();
@@ -57,6 +58,7 @@ const CONTROLLERS = [
   TransactionsController,
   DashboardController,
   DeletionRequestsController,
+  ReconciliationController,
 ];
 
 describe('admin API access policy', () => {
@@ -123,6 +125,10 @@ describe('admin API access policy', () => {
       [R.SUPPORT, R.COMPLIANCE],
     ],
     [DeletionRequestsController, 'POST', ':id/approve', [R.COMPLIANCE]],
+    [TransactionsController, 'GET', 'export', [R.FINANCE]],
+    [TransactionsController, 'POST', ':id/requery', [R.FINANCE]],
+    [AuditController, 'GET', 'export', [R.SUPER_ADMIN, R.COMPLIANCE]],
+    [ReconciliationController, 'GET', '/', [R.FINANCE, R.COMPLIANCE]],
   ];
   it.each(expected.map((e) => [e[0].name, e[1], e[2], e[3]] as const))(
     '%s %s %s requires exactly %j',

@@ -29,6 +29,8 @@ interface EnvVars {
   MINIO_ACCESS_KEY: string;
   MINIO_SECRET_KEY: string;
   MINIO_BUCKET: string;
+  MINIO_REGION: string;
+  MINIO_AUTO_CREATE_BUCKET: 'true' | 'false';
   RABBITMQ_URL: string;
 }
 
@@ -69,6 +71,9 @@ export const envSchema = Joi.object<EnvVars>({
   MINIO_ACCESS_KEY: Joi.string().allow('').default(''),
   MINIO_SECRET_KEY: Joi.string().allow('').default(''),
   MINIO_BUCKET: Joi.string().default('fiam-kyc-documents'),
+  // Any S3-compatible store works (Hetzner Object Storage in staging/prod).
+  MINIO_REGION: Joi.string().allow('').default(''),
+  MINIO_AUTO_CREATE_BUCKET: Joi.string().valid('true', 'false').default('true'),
   // Message bus to apps/payment — publishing the account-provisioning
   // request. Default matches the local Homebrew RabbitMQ instance.
   RABBITMQ_URL: Joi.string()

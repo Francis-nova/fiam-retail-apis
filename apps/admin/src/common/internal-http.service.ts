@@ -22,7 +22,7 @@ export class InternalHttp {
 
   async call<T>(
     service: InternalService,
-    method: 'POST' | 'PATCH' | 'DELETE',
+    method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
     path: string,
     body?: unknown,
   ): Promise<T> {

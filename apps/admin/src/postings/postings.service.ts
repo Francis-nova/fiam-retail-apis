@@ -12,6 +12,7 @@ import { AuditService } from '../audit/audit.service';
 import { AuthenticatedStaff } from '../auth/current-staff.decorator';
 import { InternalHttp } from '../common/internal-http.service';
 import { CustomersService } from '../customers/customers.service';
+import { TransactionsService } from '../transactions/transactions.service';
 import { Posting, PostingStatus, PostingType } from './entities/posting.entity';
 import { CreatePostingDto, ListPostingsQueryDto } from './dto/postings.dto';
 
@@ -38,6 +39,7 @@ export class PostingsService {
   constructor(
     @InjectRepository(Posting) private readonly repo: Repository<Posting>,
     private readonly customers: CustomersService,
+    private readonly transactions: TransactionsService,
     private readonly http: InternalHttp,
     private readonly audit: AuditService,
   ) {}
@@ -89,15 +91,55 @@ export class PostingsService {
     }
     const wallet = await this.customers.walletFor(dto.customerId, 'NGN');
     if (!wallet) throw new BadRequestException('This customer has no wallet');
-    if (Number(dto.amount) <= 0) {
+
+    let type = dto.type;
+    let amount = dto.amount;
+    if (dto.sourceTransactionId) {
+      // Assigning an unmatched deposit: what it is worth, and that it really
+      // is still unassigned, comes from the deposit itself — never the form.
+      const dep = await this.transactions.depositForAssignment(
+        dto.sourceTransactionId,
+      );
+      if (
+        dep.type !== 'CREDIT' ||
+        dep.status !== 'UNMATCHED' ||
+        dep.wallet_id !== null
+      ) {
+        throw new BadRequestException(
+          'That deposit is not awaiting assignment',
+        );
+      }
+      if (dep.currency !== wallet.currency) {
+        throw new BadRequestException(
+          `The deposit is in ${dep.currency}; this customer's wallet is ${wallet.currency}`,
+        );
+      }
+      type = PostingType.CREDIT;
+      amount = dep.amount;
+      const open = await this.repo.findOne({
+        where: [
+          {
+            sourceTransactionId: dto.sourceTransactionId,
+            status: PostingStatus.PENDING,
+          },
+          {
+            sourceTransactionId: dto.sourceTransactionId,
+            status: PostingStatus.PROCESSING,
+          },
+        ],
+      });
+      if (open) {
+        throw new ConflictException(
+          'There is already a pending request for this deposit',
+        );
+      }
+    }
+    if (Number(amount) <= 0) {
       throw new BadRequestException('Amount must be greater than zero');
     }
     // Early feedback only — the payment service re-checks under a row lock
     // when the posting is actually applied.
-    if (
-      dto.type === PostingType.DEBIT &&
-      Number(wallet.balance) < Number(dto.amount)
-    ) {
+    if (type === PostingType.DEBIT && Number(wallet.balance) < Number(amount)) {
       throw new BadRequestException(
         `Insufficient balance (wallet holds ${wallet.balance})`,
       );
@@ -107,10 +149,11 @@ export class PostingsService {
         customerId: dto.customerId,
         walletId: wallet.id,
         currency: wallet.currency,
-        type: dto.type,
-        amount: dto.amount,
+        type,
+        amount,
+        sourceTransactionId: dto.sourceTransactionId ?? null,
         reason: dto.reason.trim(),
-        narration: dto.narration?.trim() || DEFAULT_NARRATION[dto.type],
+        narration: dto.narration?.trim() || DEFAULT_NARRATION[type],
         requestedById: ctx.actor.staffId,
         requestedByEmail: ctx.actor.email,
       }),
@@ -192,24 +235,34 @@ export class PostingsService {
     }
 
     try {
-      const result = await this.http.call<PaymentPostingResult>(
-        'payment',
-        'POST',
-        '/postings',
-        {
-          walletId: p.walletId,
-          type: p.type,
-          amount: p.amount,
-          reference: `MAN-${p.id}`,
-          narration: p.narration,
-          meta: {
-            postingId: p.id,
-            reason: p.reason,
-            requestedBy: p.requestedByEmail,
-            approvedBy: ctx.actor.email,
-          },
-        },
-      );
+      const meta = {
+        postingId: p.id,
+        reason: p.reason,
+        requestedBy: p.requestedByEmail,
+        approvedBy: ctx.actor.email,
+      };
+      // Resolving an unmatched deposit turns that very transaction into the
+      // customer's credit (no second row); everything else is a new posting.
+      const result = p.sourceTransactionId
+        ? await this.http.call<PaymentPostingResult>(
+            'payment',
+            'POST',
+            `/unmatched/${p.sourceTransactionId}/assign`,
+            { walletId: p.walletId, reference: `MAN-${p.id}`, meta },
+          )
+        : await this.http.call<PaymentPostingResult>(
+            'payment',
+            'POST',
+            '/postings',
+            {
+              walletId: p.walletId,
+              type: p.type,
+              amount: p.amount,
+              reference: `MAN-${p.id}`,
+              narration: p.narration,
+              meta,
+            },
+          );
       await this.repo.update(id, {
         status: PostingStatus.POSTED,
         transactionId: result.transactionId,

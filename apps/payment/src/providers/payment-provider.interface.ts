@@ -27,6 +27,9 @@ export interface ProviderAccountDetails {
   clientId: string;
   clientName: string;
   bvn: string | null;
+  // Naira balance as the provider reports it (the pool account when called
+  // without an account number). Null if the provider didn't say.
+  balance?: string | null;
 }
 
 export type ProviderTransferType = 'intra' | 'inter';

@@ -4,11 +4,17 @@ import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { NestExpressApplication } from '@nestjs/platform-express';
-import { HttpExceptionFilter, hardenHttp, swaggerEnabled } from '@app/common';
+import {
+  HttpExceptionFilter,
+  hardenHttp,
+  swaggerEnabled,
+  initErrorTracking,
+} from '@app/common';
 import { AdminConfig } from './config/configuration';
 import { ipAllowlist, parseAllowedIps } from './common/ip-allowlist';
 
 async function bootstrap() {
+  initErrorTracking('admin');
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
   hardenHttp(app);
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
@@ -30,6 +36,9 @@ async function bootstrap() {
   app.enableCors({
     origin: config.get('corsOrigin', { infer: true }),
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+    // The refresh-token cookie is sent cross-origin (console -> API), which
+    // needs credentials AND an explicit origin (never '*').
+    credentials: true,
   });
 
   if (swaggerEnabled(config.get('env', { infer: true }))) {

@@ -6,6 +6,7 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import {
   HttpExceptionFilter,
   PAYMENT_ACCOUNT_PROVISIONING_QUEUE,
+  initErrorTracking,
 } from '@app/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { hardenHttp, swaggerEnabled } from '@app/common';
@@ -13,6 +14,7 @@ import { AppModule } from './app.module';
 import { PaymentConfig } from './config/configuration';
 
 async function bootstrap() {
+  initErrorTracking('payment');
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
   hardenHttp(app);
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));

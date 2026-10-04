@@ -277,6 +277,91 @@ so each run is also copied off the server. Also store `docker/.env` (it holds
 `ADMIN_TOTP_ENCRYPTION_KEY` and every secret) somewhere safe — a restored
 database is useless without them.
 
+## Object storage (KYC documents)
+
+Documents are stored in any S3-compatible bucket; staging started on the
+in-stack MinIO and moves to **Hetzner Object Storage**. The app needs only
+object read/write/delete — create the bucket in the Hetzner console (private,
+and **enable object versioning**) and use a key that is limited to it.
+
+Settings in `docker/.env` (the stack reads these, flat — nested `${A:-${B}}`
+defaults are not supported by this Docker's stack loader):
+
+```
+OBJECT_STORAGE_ENDPOINT=fsn1.your-objectstorage.com   # no scheme; "minio" = the in-stack MinIO
+OBJECT_STORAGE_PORT=443
+OBJECT_STORAGE_USE_SSL=true
+OBJECT_STORAGE_REGION=fsn1                            # fsn1 / nbg1 / hel1; blank for MinIO
+OBJECT_STORAGE_AUTO_CREATE_BUCKET=false               # bucket made in the Hetzner console
+OBJECT_STORAGE_ACCESS_KEY=...
+OBJECT_STORAGE_SECRET_KEY=...
+OBJECT_STORAGE_BUCKET=fiam-kyc-staging
+```
+
+**Cut-over (no downtime, nothing deleted from MinIO):**
+
+1. Copy and verify. This runs the app image as a one-shot job on the internal
+   network (MinIO isn't reachable from outside), is idempotent, and ends with a
+   "VERIFIED" line or a non-zero exit:
+   ```
+   IMG=$(docker service inspect fiam_auth --format '{{.Spec.TaskTemplate.ContainerSpec.Image}}' | cut -d@ -f1)
+   set -a; . docker/.env; set +a
+   docker service create --detach=false --name migrate-storage --mode replicated-job \
+     --network fiam_internal --restart-condition none \
+     --env SRC_ENDPOINT=minio --env SRC_PORT=9000 --env SRC_USE_SSL=false \
+     --env SRC_ACCESS_KEY="$MINIO_ROOT_USER" --env SRC_SECRET_KEY="$MINIO_ROOT_PASSWORD" \
+     --env SRC_BUCKET=fiam-kyc-documents \
+     --env DST_ENDPOINT="$HETZNER_ENDPOINT" --env DST_PORT=443 --env DST_USE_SSL=true \
+     --env DST_REGION="$HETZNER_REGION" --env DST_ACCESS_KEY="$HETZNER_KEY" \
+     --env DST_SECRET_KEY="$HETZNER_SECRET" --env DST_BUCKET="$HETZNER_BUCKET" \
+     "$IMG" node dist/apps/auth/apps/auth/src/storage/migrate-storage.js
+   docker service logs migrate-storage --no-trunc | tail; docker service rm migrate-storage
+   ```
+2. Point auth at the new store: set the `OBJECT_STORAGE_*` values above in
+   `docker/.env`, then `docker service update --env-add ... fiam_auth` for each
+   `MINIO_*` variable (or redeploy the stack).
+3. Open a KYC document in the console to confirm, then re-run step 1 once more
+   (it copies anything uploaded during the window).
+4. Keep the MinIO volume for a while as a fallback; remove the service later.
+
+## Off-box backups (Hetzner)
+
+`rclone` is configured purely from environment variables (no config file).
+Add to `docker/.env` (use a **different bucket** from the KYC documents):
+
+```
+RCLONE_CONFIG_HETZNER_TYPE=s3
+RCLONE_CONFIG_HETZNER_PROVIDER=Other
+RCLONE_CONFIG_HETZNER_ACCESS_KEY_ID=...
+RCLONE_CONFIG_HETZNER_SECRET_ACCESS_KEY=...
+RCLONE_CONFIG_HETZNER_ENDPOINT=https://fsn1.your-objectstorage.com
+RCLONE_CONFIG_HETZNER_REGION=fsn1
+RCLONE_CONFIG_HETZNER_NO_CHECK_BUCKET=true
+BACKUP_RCLONE_REMOTE=hetzner:fiam-backups/staging
+BACKUP_ENCRYPTION_PASSPHRASE=<long random; store it somewhere other than this server>
+```
+
+The script **refuses to upload without the passphrase** and encrypts every file
+(AES-256) first. To restore from Hetzner: `rclone copy hetzner:fiam-backups/staging/<stamp> ./enc`,
+`BACKUP_ENCRYPTION_PASSPHRASE=... backup/decrypt-backup.sh ./enc ./plain`, then
+`pg_restore -d <db> ./plain/<db>.dump`. Without the passphrase the backups
+cannot be read — keep a copy of it away from the server.
+
+## Reconciliation and stuck money (console)
+
+*Reconciliation* (Finance/Compliance) compares what we owe customers (sum of
+wallets) with the provider's reported pool balance and lists exceptions. On a
+payout stuck in PENDING/PROCESSING a Finance user can **Re-query with provider**
+(only a definite *failed* answer refunds; anything unclear changes nothing). An
+**UNMATCHED** deposit can be **assigned** to a customer: Finance requests it, a
+different Compliance user approves it on the Postings page (maker-checker), and
+the same transaction row becomes that customer's credit — it is never counted
+twice. *Transactions → Export CSV* (Finance) and *Audit log → Export CSV*
+(Compliance) are themselves audited; spreadsheet formulas in exported text are
+neutralised. Error tracking (Sentry) is off until `SENTRY_DSN` is set on the
+API services (and `VITE_SENTRY_DSN` + `SENTRY_ORIGIN` for the console); request
+bodies, headers and cookies are always stripped.
+
 ## Production checklist (admin console)
 
 Nothing below exists yet; staging values are the only ones in the repo.

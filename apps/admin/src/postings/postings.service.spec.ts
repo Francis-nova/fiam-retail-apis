@@ -75,13 +75,25 @@ function make(
       .fn()
       .mockResolvedValue({ id: 'w1', currency: 'NGN', balance: '1000.00' }),
   };
+  const transactions = {
+    depositForAssignment: jest.fn().mockResolvedValue({
+      id: 'dep1',
+      status: 'UNMATCHED',
+      type: 'CREDIT',
+      amount: '7500.0000',
+      currency: 'NGN',
+      wallet_id: null,
+      reference: 'R1',
+    }),
+  };
   const svc = new PostingsService(
     repo as never,
     customers as never,
+    transactions as never,
     http as never,
     audit as never,
   );
-  return { svc, repo, http, audit, customers };
+  return { svc, repo, http, audit, customers, transactions };
 }
 
 describe('PostingsService maker-checker', () => {
@@ -261,6 +273,82 @@ describe('PostingsService maker-checker', () => {
       expect(audit.record.mock.calls.map((c) => c[0].action)).toContain(
         'posting.requested',
       );
+    });
+  });
+
+  describe('assigning an unmatched deposit', () => {
+    const dto = {
+      customerId: 'c1',
+      type: PostingType.DEBIT, // ignored: a deposit can only be credited
+      amount: '1', // ignored: the deposit decides
+      reason: 'identified by narration',
+      sourceTransactionId: 'dep1',
+    } as never;
+
+    it('takes type and amount from the deposit, not the form', async () => {
+      const { svc, repo } = make(posting());
+      repo.findOne = jest.fn().mockResolvedValue(null);
+      await svc.request(dto, ctx(REQUESTER));
+      expect(repo.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: PostingType.CREDIT,
+          amount: '7500.0000',
+          sourceTransactionId: 'dep1',
+        }),
+      );
+    });
+
+    it.each([
+      ['a deposit that is no longer unmatched', { status: 'SUCCESSFUL' }],
+      ['one already tied to a wallet', { wallet_id: 'w9' }],
+      ['a payout, not a deposit', { type: 'DEBIT' }],
+      ['one in another currency', { currency: 'USD' }],
+    ])('refuses %s', async (_n, over) => {
+      const { svc, repo, transactions } = make(posting());
+      transactions.depositForAssignment.mockResolvedValue({
+        id: 'dep1',
+        status: 'UNMATCHED',
+        type: 'CREDIT',
+        amount: '7500.0000',
+        currency: 'NGN',
+        wallet_id: null,
+        reference: 'R1',
+        ...over,
+      });
+      await expect(svc.request(dto, ctx(REQUESTER))).rejects.toMatchObject({
+        status: 400,
+      });
+      expect(repo.save).not.toHaveBeenCalled();
+    });
+
+    it('allows only one open request per deposit', async () => {
+      const { svc, repo } = make(posting());
+      repo.findOne = jest.fn().mockResolvedValue({ id: 'other-posting' });
+      await expect(svc.request(dto, ctx(REQUESTER))).rejects.toMatchObject({
+        status: 409,
+      });
+      expect(repo.save).not.toHaveBeenCalled();
+    });
+
+    it('on approval credits THAT transaction via the assign endpoint (not a new posting)', async () => {
+      const { svc, http } = make(posting({ sourceTransactionId: 'dep1' }));
+      await svc.approve('p1', undefined, ctx(APPROVER));
+      expect(http.call).toHaveBeenCalledTimes(1);
+      const [service, method, path, body] = http.call.mock.calls[0];
+      expect([service, method, path]).toEqual([
+        'payment',
+        'POST',
+        '/unmatched/dep1/assign',
+      ]);
+      expect(body).toMatchObject({ walletId: 'w1', reference: 'MAN-p1' });
+    });
+
+    it('the requester still cannot approve their own assignment', async () => {
+      const { svc, http } = make(posting({ sourceTransactionId: 'dep1' }));
+      await expect(
+        svc.approve('p1', undefined, ctx(REQUESTER)),
+      ).rejects.toMatchObject({ status: 403 });
+      expect(http.call).not.toHaveBeenCalled();
     });
   });
 });

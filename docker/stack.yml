@@ -116,12 +116,19 @@ services:
       QOREID_LIVENESS_CLIENT_ID: ${QOREID_LIVENESS_CLIENT_ID:-}
       QOREID_LIVENESS_SECRET: ${QOREID_LIVENESS_SECRET:-}
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-}
-      MINIO_ENDPOINT: minio
-      MINIO_PORT: 9000
-      MINIO_USE_SSL: "false"
-      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
-      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
-      MINIO_BUCKET: ${MINIO_BUCKET:-fiam-kyc-documents}
+      # KYC document storage (any S3-compatible store). The variables are set
+      # in docker/.env - for the in-stack MinIO use endpoint=minio, port=9000,
+      # ssl=false and the MINIO_ROOT_* values as the keys; for Hetzner Object
+      # Storage see README "Object storage". Flat on purpose: this Docker's
+      # stack loader does not support nested ${A:-${B}} defaults.
+      MINIO_ENDPOINT: ${OBJECT_STORAGE_ENDPOINT:-minio}
+      MINIO_PORT: ${OBJECT_STORAGE_PORT:-9000}
+      MINIO_USE_SSL: ${OBJECT_STORAGE_USE_SSL:-false}
+      MINIO_REGION: ${OBJECT_STORAGE_REGION:-}
+      MINIO_AUTO_CREATE_BUCKET: ${OBJECT_STORAGE_AUTO_CREATE_BUCKET:-true}
+      MINIO_ACCESS_KEY: ${OBJECT_STORAGE_ACCESS_KEY:?set OBJECT_STORAGE_ACCESS_KEY in docker/.env}
+      MINIO_SECRET_KEY: ${OBJECT_STORAGE_SECRET_KEY:?set OBJECT_STORAGE_SECRET_KEY in docker/.env}
+      MINIO_BUCKET: ${OBJECT_STORAGE_BUCKET:-fiam-kyc-documents}
       RABBITMQ_URL: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASSWORD}@rabbitmq:5672
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:7001/health"]

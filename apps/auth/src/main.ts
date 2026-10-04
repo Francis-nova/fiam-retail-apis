@@ -4,10 +4,16 @@ import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { NestExpressApplication } from '@nestjs/platform-express';
-import { HttpExceptionFilter, hardenHttp, swaggerEnabled } from '@app/common';
+import {
+  HttpExceptionFilter,
+  hardenHttp,
+  swaggerEnabled,
+  initErrorTracking,
+} from '@app/common';
 import { AuthConfig } from './config/configuration';
 
 async function bootstrap() {
+  initErrorTracking('auth');
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
   hardenHttp(app);
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));

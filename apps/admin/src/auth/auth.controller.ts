@@ -1,3 +1,4 @@
+import type { Request, Response } from 'express';
 import { Throttle } from '@nestjs/throttler';
 import {
   Body,
@@ -5,7 +6,11 @@ import {
   Get,
   HttpCode,
   Post,
+  Req,
+  Res,
+  UnauthorizedException,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
 import { ApiBearerAuth } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
@@ -16,7 +21,6 @@ import {
   MfaEnrollConfirmDto,
   MfaTokenDto,
   MfaVerifyDto,
-  RefreshDto,
   TotpCodeDto,
 } from './dto/auth.dto';
 import { JwtAuthGuard } from './jwt-auth.guard';
@@ -26,7 +30,14 @@ import {
   CurrentStaff,
 } from './current-staff.decorator';
 import { AllowPendingPasswordChange } from './roles.decorator';
+import {
+  RefreshCookieInterceptor,
+  clearRefreshCookie,
+  readRefreshCookie,
+} from './refresh-cookie';
 
+// Any response carrying a refresh token has it moved into an HttpOnly cookie.
+@UseInterceptors(RefreshCookieInterceptor)
 @Controller('auth')
 export class AuthController {
   constructor(private readonly auth: AuthService) {}
@@ -119,14 +130,18 @@ export class AuthController {
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @Post('refresh')
   @HttpCode(200)
-  refresh(@Body() dto: RefreshDto) {
-    return this.auth.refresh(dto.refreshToken);
+  refresh(@Req() req: Request) {
+    const token = readRefreshCookie(req);
+    if (!token) throw new UnauthorizedException();
+    return this.auth.refresh(token);
   }
 
   @Post('logout')
   @HttpCode(204)
-  async logout(@Body() dto: RefreshDto) {
-    await this.auth.logout(dto.refreshToken);
+  async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    const token = readRefreshCookie(req);
+    if (token) await this.auth.logout(token);
+    clearRefreshCookie(res);
   }
 
   @ApiBearerAuth()

@@ -49,6 +49,20 @@ export class AuditService {
     }
   }
 
+  /** Rows matching the filter, newest first, capped — for the CSV export. */
+  async listForExport(
+    filter: { staffId?: string; action?: string; resourceId?: string },
+    max: number,
+  ) {
+    const qb = this.repo.createQueryBuilder('a').orderBy('a.createdAt', 'DESC');
+    if (filter.staffId) qb.andWhere('a.staffId = :s', { s: filter.staffId });
+    if (filter.action) qb.andWhere('a.action = :act', { act: filter.action });
+    if (filter.resourceId)
+      qb.andWhere('a.resourceId = :r', { r: filter.resourceId });
+    const rows = await qb.take(max + 1).getMany();
+    return { items: rows.slice(0, max), truncated: rows.length > max };
+  }
+
   async list(filter: {
     staffId?: string;
     action?: string;

@@ -13,22 +13,31 @@ export class StorageService {
   private readonly logger = new Logger(StorageService.name);
   private readonly client: Minio.Client;
   private readonly bucket: string;
+  private readonly autoCreate: boolean;
   private bucketReady = false;
 
   constructor(configService: ConfigService<AuthConfig, true>) {
     const cfg = configService.get('minio', { infer: true });
     this.bucket = cfg.bucket;
+    this.autoCreate = cfg.autoCreateBucket;
     this.client = new Minio.Client({
       endPoint: cfg.endpoint,
       port: cfg.port,
       useSSL: cfg.useSsl,
       accessKey: cfg.accessKey,
       secretKey: cfg.secretKey,
+      ...(cfg.region ? { region: cfg.region } : {}),
     });
   }
 
   private async ensureBucket(): Promise<void> {
     if (this.bucketReady) return;
+    // Managed object storage: the bucket exists already and our key may not
+    // be allowed to list or create buckets, so don't try.
+    if (!this.autoCreate) {
+      this.bucketReady = true;
+      return;
+    }
     const exists = await this.client.bucketExists(this.bucket);
     if (!exists) {
       await this.client.makeBucket(this.bucket);

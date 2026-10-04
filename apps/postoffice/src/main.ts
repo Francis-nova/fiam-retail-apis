@@ -3,11 +3,12 @@ import { NestFactory } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import { MicroserviceOptions, Transport } from '@nestjs/microservices';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import { POSTOFFICE_NOTIFICATION_QUEUE } from '@app/common';
+import { POSTOFFICE_NOTIFICATION_QUEUE, initErrorTracking } from '@app/common';
 import { AppModule } from './app.module';
 import { PostofficeConfig } from './config/configuration';
 
 async function bootstrap() {
+  initErrorTracking('postoffice');
   const app = await NestFactory.create(AppModule);
 
   const swaggerConfig = new DocumentBuilder()

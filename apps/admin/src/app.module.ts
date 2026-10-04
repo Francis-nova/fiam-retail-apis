@@ -13,6 +13,7 @@ import { CustomersModule } from './customers/customers.module';
 import { TransactionsModule } from './transactions/transactions.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { StaffModule } from './staff/staff.module';
+import { ReconciliationModule } from './reconciliation/reconciliation.module';
 import { HealthController } from './health/health.controller';
 
 @Module({
@@ -34,6 +35,7 @@ import { HealthController } from './health/health.controller';
     CustomersModule,
     PostingsModule,
     DeletionRequestsModule,
+    ReconciliationModule,
   ],
   controllers: [HealthController],
 })
