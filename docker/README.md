@@ -306,7 +306,8 @@ OBJECT_STORAGE_BUCKET=fiam-kyc-staging
    ```
    IMG=$(docker service inspect fiam_auth --format '{{.Spec.TaskTemplate.ContainerSpec.Image}}' | cut -d@ -f1)
    set -a; . docker/.env; set +a
-   docker service create --detach=false --name migrate-storage --mode replicated-job \
+   # `timeout`: Swarm waits forever on a job that *fails*, so cap it.
+   timeout 600 docker service create --detach=false --name migrate-storage --mode replicated-job \
      --network fiam_internal --restart-condition none \
      --env SRC_ENDPOINT=minio --env SRC_PORT=9000 --env SRC_USE_SSL=false \
      --env SRC_ACCESS_KEY="$MINIO_ROOT_USER" --env SRC_SECRET_KEY="$MINIO_ROOT_PASSWORD" \
