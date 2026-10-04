@@ -8,18 +8,30 @@ function makeService(key = 'k'.repeat(32)) {
   return new PinVerifierService(config);
 }
 
-function mockFetch(status: number) {
-  const fn = jest.fn().mockResolvedValue({ ok: status < 300, status });
+function mockFetch(status: number, body: unknown = { transferLimit: null }) {
+  const fn = jest.fn().mockResolvedValue({
+    ok: status < 300,
+    status,
+    json: () => Promise.resolve(body),
+  });
   global.fetch = fn;
   return fn;
 }
 
 describe('PinVerifierService', () => {
-  it('passes on 204 and calls the internal endpoint with the key and PIN', async () => {
-    const fetchMock = mockFetch(204);
-    await expect(
-      makeService().assertValid('u1', '1234'),
-    ).resolves.toBeUndefined();
+  it('returns the outflow restriction reported by auth', async () => {
+    const limit = { amount: '20000.00', since: 'a', until: 'b' };
+    mockFetch(200, { transferLimit: limit });
+    await expect(makeService().assertValid('u1', '1234')).resolves.toEqual({
+      transferLimit: limit,
+    });
+  });
+
+  it('passes on 200 and calls the internal endpoint with the key and PIN', async () => {
+    const fetchMock = mockFetch(200);
+    await expect(makeService().assertValid('u1', '1234')).resolves.toEqual({
+      transferLimit: null,
+    });
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe('http://auth:7001/internal/users/u1/verify-pin');
     expect((init.headers as Record<string, string>)['x-internal-key']).toBe(

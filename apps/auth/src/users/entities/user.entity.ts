@@ -101,6 +101,11 @@ export class User {
   @Column({ name: 'transaction_pin_hash', type: 'varchar', nullable: true })
   transactionPinHash: string | null;
 
+  // End of the post-new-device outflow limit window (CBN circular, Mar 2026).
+  // Null/past = no limit. See UsersService.startDeviceLimit.
+  @Column({ name: 'device_limit_until', type: 'timestamptz', nullable: true })
+  deviceLimitUntil: Date | null;
+
   // Brute-force counters — see UsersService.guardedVerify.
   @Column({ name: 'password_failed_attempts', type: 'int', default: 0 })
   passwordFailedAttempts: number;

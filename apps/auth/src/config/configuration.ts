@@ -11,6 +11,12 @@ export interface AuthConfig {
     refreshSecret: string;
     refreshTtl: string;
   };
+  // Outflow cap after activating on a new device (CBN circular 12 Mar 2026:
+  // N20,000 for the first 24 hours; banks may set it lower, never higher).
+  deviceLimit: {
+    amountNgn: string;
+    hours: number;
+  };
   otp: {
     ttlSeconds: number;
     // Named codeLength (not length) — a plain "length" key on this nested
@@ -58,6 +64,10 @@ export default (): AuthConfig => ({
     accessTtl: process.env.JWT_ACCESS_TTL ?? '15m',
     refreshSecret: process.env.JWT_REFRESH_SECRET as string,
     refreshTtl: process.env.JWT_REFRESH_TTL ?? '30d',
+  },
+  deviceLimit: {
+    amountNgn: process.env.NEW_DEVICE_LIMIT_NGN ?? '20000',
+    hours: parseInt(process.env.NEW_DEVICE_LIMIT_HOURS ?? '24', 10),
   },
   otp: {
     ttlSeconds: parseInt(process.env.OTP_TTL_SECONDS ?? '300', 10),

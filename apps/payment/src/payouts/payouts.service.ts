@@ -1,6 +1,7 @@
 import { randomInt } from 'crypto';
 import {
   BadRequestException,
+  ForbiddenException,
   Inject,
   Injectable,
   Logger,
@@ -10,7 +11,7 @@ import { ConfigService } from '@nestjs/config';
 import { InjectQueue } from '@nestjs/bullmq';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Queue } from 'bullmq';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
 import Decimal from 'decimal.js';
 import { CurrencyCode } from '@app/common';
 import { PaymentConfig } from '../config/configuration';
@@ -40,6 +41,7 @@ import { ResolveRecipientDto } from './dto/resolve-recipient.dto';
 import { InitiatePayoutDto } from './dto/initiate-payout.dto';
 import { calculateTransferFee } from './fee.util';
 import { PinVerifierService } from './pin-verifier.service';
+import type { TransferLimit } from './pin-verifier.service';
 
 @Injectable()
 export class PayoutsService {
@@ -117,7 +119,10 @@ export class PayoutsService {
     dto: InitiatePayoutDto,
   ): Promise<Transaction> {
     // First thing, before anything is looked up or reserved.
-    await this.pinVerifier.assertValid(userId, dto.pin);
+    const { transferLimit } = await this.pinVerifier.assertValid(
+      userId,
+      dto.pin,
+    );
 
     const provider = this.registry.getProviderForCurrency(CurrencyCode.NGN);
     const { walletName } = this.configService.get('vfd', { infer: true });
@@ -194,6 +199,14 @@ export class PayoutsService {
         wallet.id,
         debit,
       );
+      // After the wallet row is locked, so two concurrent payouts can't both
+      // squeeze under the cap.
+      await this.assertWithinTransferLimit(
+        manager,
+        wallet.id,
+        amount,
+        transferLimit,
+      );
       return manager.save(
         Transaction,
         manager.create(Transaction, {
@@ -225,6 +238,88 @@ export class PayoutsService {
     });
 
     return this.applyTransferResult(transaction, result);
+  }
+
+  // Amount already sent (or in flight) inside the limit window. Failed
+  // payouts are refunded, so they don't count against the cap.
+  private async outflowSince(
+    manager: EntityManager,
+    walletId: string,
+    since: Date,
+  ): Promise<Decimal> {
+    const row = await manager
+      .createQueryBuilder(Transaction, 't')
+      .select('COALESCE(SUM(t.amount), 0)', 'total')
+      .where('t.walletId = :walletId', { walletId })
+      .andWhere('t.type = :type', { type: TransactionType.DEBIT })
+      .andWhere('t.status IN (:...statuses)', {
+        statuses: [
+          TransactionStatus.PENDING,
+          TransactionStatus.PROCESSING,
+          TransactionStatus.SUCCESSFUL,
+        ],
+      })
+      .andWhere('t.createdAt >= :since', { since })
+      .getRawOne<{ total: string }>();
+    return new Decimal(row?.total ?? 0);
+  }
+
+  // CBN circular (12 Mar 2026): after activating the app on a new device an
+  // existing customer may send at most N20,000 in total during the first 24
+  // hours. The window and cap come from auth (which knows about the device).
+  private async assertWithinTransferLimit(
+    manager: EntityManager,
+    walletId: string,
+    amount: Decimal,
+    limit: TransferLimit | null,
+  ): Promise<void> {
+    if (!limit) return;
+    const used = await this.outflowSince(
+      manager,
+      walletId,
+      new Date(limit.since),
+    );
+    const remaining = Decimal.max(new Decimal(limit.amount).minus(used), 0);
+    if (amount.greaterThan(remaining)) {
+      const until = new Date(limit.until).toLocaleString('en-NG', {
+        timeZone: 'Africa/Lagos',
+        dateStyle: 'medium',
+        timeStyle: 'short',
+      });
+      throw new ForbiddenException({
+        statusCode: 403,
+        code: 'NEW_DEVICE_LIMIT',
+        message: `For your security, transfers are limited to ₦${new Decimal(limit.amount).toNumber().toLocaleString('en-NG')} in total for 24 hours after signing in on a new device. You can send up to ₦${remaining.toNumber().toLocaleString('en-NG', { maximumFractionDigits: 2 })} more until ${until}.`,
+        limit: limit.amount,
+        remaining: remaining.toFixed(2),
+        until: limit.until,
+      });
+    }
+  }
+
+  // For the transfer screen: is a limit active, and how much is left of it.
+  async transferLimitStatus(userId: string) {
+    const limit = await this.pinVerifier.getTransferLimit(userId);
+    if (!limit) return { restricted: false as const };
+    const wallet = await this.walletsService.findByUserAndCurrency(
+      userId,
+      CurrencyCode.NGN,
+    );
+    const used = wallet
+      ? await this.outflowSince(
+          this.dataSource.manager,
+          wallet.id,
+          new Date(limit.since),
+        )
+      : new Decimal(0);
+    const remaining = Decimal.max(new Decimal(limit.amount).minus(used), 0);
+    return {
+      restricted: true as const,
+      limit: limit.amount,
+      used: used.toFixed(2),
+      remaining: remaining.toFixed(2),
+      until: limit.until,
+    };
   }
 
   // "ADL007884944": wallet-name prefix (which VFD requires on every transfer

@@ -4,7 +4,9 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
+import { AuthConfig } from '../config/configuration';
 import { Repository } from 'typeorm';
 import {
   CustomerTier,
@@ -33,6 +35,7 @@ export class UsersService {
   constructor(
     @InjectRepository(User)
     private readonly usersRepo: Repository<User>,
+    private readonly configService: ConfigService<AuthConfig, true>,
   ) {}
 
   findByEmail(email: string): Promise<User | null> {
@@ -265,5 +268,41 @@ export class UsersService {
       );
     }
     return ok;
+  }
+
+  // --- New-device outflow limit (CBN circular, 12 Mar 2026) ---
+
+  get deviceLimitHours(): number {
+    return this.configService.get('deviceLimit', { infer: true }).hours;
+  }
+
+  /** Opens (or restarts) the limit window: now .. now + 24h. */
+  async startDeviceLimit(userId: string): Promise<void> {
+    await this.usersRepo.query(
+      `UPDATE users SET device_limit_until = now() + make_interval(hours => $2)
+       WHERE id = $1`,
+      [userId, this.deviceLimitHours],
+    );
+  }
+
+  /**
+   * The customer's current outflow restriction, or null when none applies.
+   * `amount` is the cumulative cap over the window [since, until).
+   */
+  transferLimitFor(user: Pick<User, 'deviceLimitUntil'>): {
+    amount: string;
+    since: string;
+    until: string;
+  } | null {
+    const until = user.deviceLimitUntil;
+    if (!until || until.getTime() <= Date.now()) return null;
+    const { amountNgn, hours } = this.configService.get('deviceLimit', {
+      infer: true,
+    });
+    return {
+      amount: Number(amountNgn).toFixed(2),
+      since: new Date(until.getTime() - hours * 3_600_000).toISOString(),
+      until: until.toISOString(),
+    };
   }
 }

@@ -30,6 +30,15 @@ export class PayoutsController {
     return this.payoutsService.calculateFee(amount);
   }
 
+  // Lets the transfer screen show the new-device limit (CBN circular) and
+  // what's left of it before the customer starts typing.
+  @Get('limit')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  transferLimit(@CurrentUser() user: AuthenticatedUser) {
+    return this.payoutsService.transferLimitStatus(user.userId);
+  }
+
   @Post()
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()

@@ -217,10 +217,34 @@ export class AuthService {
     // device that finished registration doesn't need a PIN challenge on its
     // very next login (it won't have a PIN yet anyway at this point).
     if (meta.deviceId) {
-      await this.devicesService.trust(user.id, meta.deviceId, meta.deviceName);
+      await this.trustDevice(user, meta.deviceId, meta.deviceName);
     }
     const tokens = await this.tokensService.issueTokenPair(user.id, session.id);
     return { ...tokens, progress: progressOf(refreshed) };
+  }
+
+  // Trusts a device, and starts the CBN new-device outflow limit when this is
+  // an existing customer activating on a device we haven't seen: either they
+  // already had another device (a change), or the account predates the window
+  // (so a first-ever device on an established account isn't a free pass).
+  // A brand-new account's very first device is not limited by this rule.
+  private async trustDevice(
+    user: { id: string; createdAt: Date },
+    deviceId: string,
+    deviceName?: string | null,
+  ): Promise<void> {
+    const { created, hadOtherDevices } = await this.devicesService.trust(
+      user.id,
+      deviceId,
+      deviceName,
+    );
+    if (!created) return;
+    const accountAgeMs = Date.now() - user.createdAt.getTime();
+    const established =
+      accountAgeMs > this.usersService.deviceLimitHours * 3_600_000;
+    if (hadOtherDevices || established) {
+      await this.usersService.startDeviceLimit(user.id);
+    }
   }
 
   async login(
@@ -252,11 +276,7 @@ export class AuthService {
 
     if (deviceRecognized) {
       if (meta.deviceId) {
-        await this.devicesService.trust(
-          user.id,
-          meta.deviceId,
-          meta.deviceName,
-        );
+        await this.trustDevice(user, meta.deviceId, meta.deviceName);
       }
       // One active session per customer — logging in here must invalidate
       // whatever was still active elsewhere immediately, not just on that
@@ -342,7 +362,7 @@ export class AuthService {
 
     const deviceId = pending.deviceId ?? meta.deviceId;
     if (deviceId) {
-      await this.devicesService.trust(user.id, deviceId, meta.deviceName);
+      await this.trustDevice(user, deviceId, meta.deviceName);
     }
 
     // One active session per customer — this confirm is the moment the new
@@ -382,6 +402,12 @@ export class AuthService {
     await this.usersService.setTransactionPin(userId, pinHash);
     const updated = await this.usersService.findById(userId);
     await this.maybeRequestPaymentProvisioning(updated);
+  }
+
+  async transferLimit(userId: string) {
+    return this.usersService.transferLimitFor(
+      await this.usersService.findById(userId),
+    );
   }
 
   async verifyTransactionPin(userId: string, pin: string): Promise<void> {

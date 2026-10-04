@@ -10,6 +10,14 @@ import { PaymentConfig } from '../config/configuration';
 
 const AUTH_TIMEOUT_MS = 5_000;
 
+// Outflow restriction reported by auth (CBN circular, 12 Mar 2026: new-device
+// limit). `amount` is the cumulative cap over [since, until).
+export interface TransferLimit {
+  amount: string;
+  since: string;
+  until: string;
+}
+
 // The transaction PIN lives in apps/auth. Payouts ask it to check the PIN
 // (over its internal, shared-secret API) as part of the request that moves
 // the money, so the PIN can't be skipped by calling /payouts directly.
@@ -22,7 +30,10 @@ export class PinVerifierService {
     private readonly configService: ConfigService<PaymentConfig, true>,
   ) {}
 
-  async assertValid(userId: string, pin: string): Promise<void> {
+  async assertValid(
+    userId: string,
+    pin: string,
+  ): Promise<{ transferLimit: TransferLimit | null }> {
     const { internalUrl, internalApiKey } = this.configService.get('auth', {
       infer: true,
     });
@@ -56,7 +67,12 @@ export class PinVerifierService {
       );
     }
 
-    if (response.ok) return;
+    if (response.ok) {
+      const body = (await response.json()) as {
+        transferLimit?: TransferLimit | null;
+      };
+      return { transferLimit: body.transferLimit ?? null };
+    }
     // 403, not 401: a wrong PIN here must not read as an expired session
     // (the app signs the customer out on any 401 from this API).
     if (response.status === 401) throw new ForbiddenException('Incorrect PIN');
@@ -70,5 +86,30 @@ export class PinVerifierService {
     throw new ServiceUnavailableException(
       'Payouts are temporarily unavailable',
     );
+  }
+
+  // Read-only: the customer's current outflow restriction (no PIN involved).
+  // Unlike the PIN check this is only informational, so it fails soft.
+  async getTransferLimit(userId: string): Promise<TransferLimit | null> {
+    const { internalUrl, internalApiKey } = this.configService.get('auth', {
+      infer: true,
+    });
+    if (!internalApiKey) return null;
+    try {
+      const response = await fetch(
+        `${internalUrl}/internal/users/${encodeURIComponent(userId)}/transfer-limit`,
+        {
+          headers: { 'x-internal-key': internalApiKey },
+          signal: AbortSignal.timeout(AUTH_TIMEOUT_MS),
+        },
+      );
+      if (!response.ok) return null;
+      const body = (await response.json()) as {
+        transferLimit?: TransferLimit | null;
+      };
+      return body.transferLimit ?? null;
+    } catch {
+      return null;
+    }
   }
 }

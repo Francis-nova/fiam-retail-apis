@@ -10,6 +10,8 @@ interface EnvVars {
   JWT_ACCESS_TTL: string;
   JWT_REFRESH_SECRET: string;
   JWT_REFRESH_TTL: string;
+  NEW_DEVICE_LIMIT_NGN: string;
+  NEW_DEVICE_LIMIT_HOURS: number;
   OTP_TTL_SECONDS: number;
   OTP_LENGTH: number;
   OTP_MAX_ATTEMPTS: number;
@@ -35,6 +37,9 @@ export const envSchema = Joi.object<EnvVars>({
     .valid('development', 'test', 'production')
     .default('development'),
   AUTH_PORT: Joi.number().default(7001),
+  // CBN caps this at 20,000 / 24h — lower is allowed, higher is not.
+  NEW_DEVICE_LIMIT_NGN: Joi.number().integer().min(0).max(20000).default(20000),
+  NEW_DEVICE_LIMIT_HOURS: Joi.number().integer().min(24).default(24),
   AUTH_DATABASE_URL: Joi.string().uri().required(),
   JWT_ACCESS_SECRET: Joi.string().min(32).required(),
   JWT_ACCESS_TTL: Joi.string().default('15m'),

@@ -44,15 +44,24 @@ export class InternalController {
   // Called by payment from inside POST /payouts: the transaction PIN is
   // checked as part of the money movement itself, so a stolen access token
   // can't skip it by calling the payout endpoint directly. Shares the
-  // per-account attempt limit with every other PIN check. 204 = correct;
-  // 401 = wrong; 429 = locked.
+  // per-account attempt limit with every other PIN check. 200 = correct;
+  // 401 = wrong; 429 = locked. Body: { transferLimit } (null = unrestricted).
   @Post('users/:id/verify-pin')
-  @HttpCode(204)
+  @HttpCode(200)
   async verifyPin(
     @Param('id', new ParseUUIDPipe()) id: string,
     @Body() dto: VerifyPinDto,
   ) {
     await this.authService.verifyTransactionPin(id, dto.pin);
+    // The PIN is right — also tell payment about any outflow restriction so
+    // it can enforce it in the same request (one round trip, no race).
+    return { transferLimit: await this.authService.transferLimit(id) };
+  }
+
+  // Current outflow restriction (new-device limit), for the transfer screen.
+  @Get('users/:id/transfer-limit')
+  async transferLimit(@Param('id', new ParseUUIDPipe()) id: string) {
+    return { transferLimit: await this.authService.transferLimit(id) };
   }
 
   // --- Back-office (admin console) account actions ---
