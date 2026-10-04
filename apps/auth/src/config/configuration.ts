@@ -45,6 +45,9 @@ export interface AuthConfig {
     useSsl: boolean;
     region: string;
     autoCreateBucket: boolean;
+    // Folder inside a shared bucket, e.g. "fiam-staging/". Applied by the
+    // storage layer only; keys stored in the database stay prefix-free.
+    keyPrefix: string;
     accessKey: string;
     secretKey: string;
     bucket: string;
@@ -105,6 +108,7 @@ export default (): AuthConfig => ({
     // false when the bucket is created out-of-band (Hetzner): the app's
     // credentials then only need object read/write, not bucket admin.
     autoCreateBucket: process.env.MINIO_AUTO_CREATE_BUCKET !== 'false',
+    keyPrefix: process.env.MINIO_KEY_PREFIX ?? '',
     accessKey: process.env.MINIO_ACCESS_KEY ?? '',
     secretKey: process.env.MINIO_SECRET_KEY ?? '',
     bucket: process.env.MINIO_BUCKET ?? 'fiam-kyc-documents',

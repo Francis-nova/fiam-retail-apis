@@ -8,18 +8,27 @@ import * as Minio from 'minio';
 import type { Readable } from 'stream';
 import { AuthConfig } from '../config/configuration';
 
+// "fiam-staging", "/fiam-staging/" and "fiam-staging/" all mean the same folder;
+// blank means the bucket root. Never starts with "/", always ends with "/".
+export function normalizePrefix(raw: string | undefined): string {
+  const trimmed = (raw ?? '').trim().replace(/^\/+|\/+$/g, '');
+  return trimmed ? `${trimmed}/` : '';
+}
+
 @Injectable()
 export class StorageService {
   private readonly logger = new Logger(StorageService.name);
   private readonly client: Minio.Client;
   private readonly bucket: string;
   private readonly autoCreate: boolean;
+  private readonly prefix: string;
   private bucketReady = false;
 
   constructor(configService: ConfigService<AuthConfig, true>) {
     const cfg = configService.get('minio', { infer: true });
     this.bucket = cfg.bucket;
     this.autoCreate = cfg.autoCreateBucket;
+    this.prefix = normalizePrefix(cfg.keyPrefix);
     this.client = new Minio.Client({
       endPoint: cfg.endpoint,
       port: cfg.port,
@@ -54,7 +63,7 @@ export class StorageService {
       await this.ensureBucket();
       await this.client.putObject(
         this.bucket,
-        objectKey,
+        this.prefix + objectKey,
         buffer,
         buffer.length,
         {
@@ -74,7 +83,7 @@ export class StorageService {
   async getObject(objectKey: string): Promise<Readable> {
     try {
       await this.ensureBucket();
-      return await this.client.getObject(this.bucket, objectKey);
+      return await this.client.getObject(this.bucket, this.prefix + objectKey);
     } catch (err) {
       this.logger.error(`MinIO read failed for ${objectKey}`, err as Error);
       throw new ServiceUnavailableException(
@@ -84,8 +93,10 @@ export class StorageService {
   }
 
   async remove(objectKey: string): Promise<void> {
-    await this.client.removeObject(this.bucket, objectKey).catch((err) => {
-      this.logger.warn(`MinIO removal failed for ${objectKey}: ${err}`);
-    });
+    await this.client
+      .removeObject(this.bucket, this.prefix + objectKey)
+      .catch((err) => {
+        this.logger.warn(`MinIO removal failed for ${objectKey}: ${err}`);
+      });
   }
 }

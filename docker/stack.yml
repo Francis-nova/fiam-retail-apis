@@ -129,6 +129,8 @@ services:
       MINIO_ACCESS_KEY: ${OBJECT_STORAGE_ACCESS_KEY:?set OBJECT_STORAGE_ACCESS_KEY in docker/.env}
       MINIO_SECRET_KEY: ${OBJECT_STORAGE_SECRET_KEY:?set OBJECT_STORAGE_SECRET_KEY in docker/.env}
       MINIO_BUCKET: ${OBJECT_STORAGE_BUCKET:-fiam-kyc-documents}
+      # Folder inside a shared bucket (blank = bucket root), e.g. fiam-staging/
+      MINIO_KEY_PREFIX: ${OBJECT_STORAGE_PREFIX:-}
       RABBITMQ_URL: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASSWORD}@rabbitmq:5672
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:7001/health"]
