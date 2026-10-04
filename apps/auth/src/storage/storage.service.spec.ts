@@ -65,7 +65,7 @@ describe('StorageService key prefix', () => {
   });
 
   it('with no prefix, keys are used as-is (local MinIO behaviour unchanged)', async () => {
-    const svc = make({ keyPrefix: '' });
+    const svc = make({ endpoint: 'minio', keyPrefix: '' });
     await svc.upload('kyc/u1/a.jpeg', Buffer.from('x'), 'image/jpeg');
     expect(put.mock.calls[0][1]).toBe('kyc/u1/a.jpeg');
   });
@@ -86,5 +86,22 @@ describe('StorageService key prefix', () => {
     )!.value;
     expect(client.makeBucket).not.toHaveBeenCalled();
     expect(client.bucketExists).not.toHaveBeenCalled();
+  });
+});
+
+describe('StorageService shared-bucket guard', () => {
+  it('refuses external storage with no folder (would write into the bucket root)', () => {
+    expect(() => make({ keyPrefix: '' })).toThrow(
+      /MINIO_KEY_PREFIX must be set/,
+    );
+  });
+
+  it('allows it when explicitly told the bucket is dedicated to this app', () => {
+    expect(() => make({ keyPrefix: '', allowBucketRoot: true })).not.toThrow();
+  });
+
+  it('does not apply to a local MinIO, which owns its bucket', () => {
+    expect(() => make({ endpoint: 'minio', keyPrefix: '' })).not.toThrow();
+    expect(() => make({ endpoint: 'localhost', keyPrefix: '' })).not.toThrow();
   });
 });

@@ -29,6 +29,16 @@ export class StorageService {
     this.bucket = cfg.bucket;
     this.autoCreate = cfg.autoCreateBucket;
     this.prefix = normalizePrefix(cfg.keyPrefix);
+    // External object storage is shared between environments (and with other
+    // company data), separated only by folder. A blank folder there would write
+    // into the bucket root, so refuse to start rather than risk it. A local
+    // MinIO (host "minio"/"localhost") owns its whole bucket and is exempt.
+    const local = ['minio', 'localhost', '127.0.0.1'].includes(cfg.endpoint);
+    if (!local && !this.prefix && !cfg.allowBucketRoot) {
+      throw new Error(
+        'MINIO_KEY_PREFIX must be set for external object storage (e.g. "fiam-staging/" or "fiam-production/"). Set MINIO_ALLOW_BUCKET_ROOT=true only for a bucket dedicated to this app.',
+      );
+    }
     this.client = new Minio.Client({
       endPoint: cfg.endpoint,
       port: cfg.port,

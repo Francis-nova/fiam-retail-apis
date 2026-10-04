@@ -48,6 +48,8 @@ export interface AuthConfig {
     // Folder inside a shared bucket, e.g. "fiam-staging/". Applied by the
     // storage layer only; keys stored in the database stay prefix-free.
     keyPrefix: string;
+    // Escape hatch for a bucket used by this app alone (see StorageService).
+    allowBucketRoot: boolean;
     accessKey: string;
     secretKey: string;
     bucket: string;
@@ -109,6 +111,7 @@ export default (): AuthConfig => ({
     // credentials then only need object read/write, not bucket admin.
     autoCreateBucket: process.env.MINIO_AUTO_CREATE_BUCKET !== 'false',
     keyPrefix: process.env.MINIO_KEY_PREFIX ?? '',
+    allowBucketRoot: process.env.MINIO_ALLOW_BUCKET_ROOT === 'true',
     accessKey: process.env.MINIO_ACCESS_KEY ?? '',
     secretKey: process.env.MINIO_SECRET_KEY ?? '',
     bucket: process.env.MINIO_BUCKET ?? 'fiam-kyc-documents',

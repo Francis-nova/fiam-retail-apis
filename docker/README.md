@@ -302,8 +302,20 @@ OBJECT_STORAGE_PREFIX=                                # optional folder in a SHA
 Staging uses the shared bucket `awuya-digital` with the folder `fiam-staging/`
 (documents in `fiam-staging/kyc/`, encrypted backups in `fiam-staging/backups/`).
 The prefix is applied by the storage layer only, so database keys stay
-prefix-free. A key for a shared bucket can read *everything* in it, so
-production should use its own bucket and key, with versioning on.
+prefix-free.
+
+**Decision: staging and production share this one bucket**, separated only by
+folder — `fiam-staging/` and `fiam-production/` (same layout under each:
+`kyc/`, `backups/`). Consequences to keep in mind:
+- Folders are a naming convention, not a security boundary: any service holding
+  the key can read or delete *both* environments. A mis-set `OBJECT_STORAGE_PREFIX`
+  on staging is therefore a production incident. Production's value must be
+  exactly `fiam-production/`, staging's exactly `fiam-staging/`; never blank.
+- Use a **different `BACKUP_ENCRYPTION_PASSPHRASE` per environment**, so a leaked
+  staging passphrase can't open production backups.
+- Turn on **bucket versioning** (Hetzner console) before production holds real
+  customer documents; it is the only protection against an overwrite/delete.
+- If Hetzner ever allows separate keys per environment, switch to them.
 
 **Cut-over (no downtime, nothing deleted from MinIO):**
 
@@ -375,9 +387,12 @@ bodies, headers and cookies are always stripped.
 
 Nothing below exists yet; staging values are the only ones in the repo.
 
-- [ ] Separate production stack: own Postgres, Redis, RabbitMQ, MinIO and
+- [ ] Separate production stack: own Postgres, Redis and RabbitMQ and
       **fresh secrets** (never reuse staging's `INTERNAL_API_KEY`, JWT secrets,
-      `ADMIN_TOTP_ENCRYPTION_KEY`, DB passwords).
+      `ADMIN_TOTP_ENCRYPTION_KEY`, DB passwords, backup passphrase).
+- [ ] Object storage: the shared Hetzner bucket with `OBJECT_STORAGE_PREFIX=fiam-production/`
+      (no MinIO), `BACKUP_RCLONE_REMOTE=hetzner:awuya-digital/fiam-production/backups`,
+      versioning on. Double-check the prefix on both environments.
 - [ ] DNS + TLS for the console and API hostnames.
 - [ ] Build the console with `VITE_API_URL=<prod admin API origin>` and run it
       with `API_ORIGIN=<same origin>` (the CSP follows it — no code change).

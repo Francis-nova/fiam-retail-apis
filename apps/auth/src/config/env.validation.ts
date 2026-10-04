@@ -32,6 +32,7 @@ interface EnvVars {
   MINIO_REGION: string;
   MINIO_AUTO_CREATE_BUCKET: 'true' | 'false';
   MINIO_KEY_PREFIX: string;
+  MINIO_ALLOW_BUCKET_ROOT: 'true' | 'false';
   RABBITMQ_URL: string;
 }
 
@@ -79,6 +80,7 @@ export const envSchema = Joi.object<EnvVars>({
     .pattern(/^[A-Za-z0-9._/-]*$/)
     .allow('')
     .default(''),
+  MINIO_ALLOW_BUCKET_ROOT: Joi.string().valid('true', 'false').default('false'),
   MINIO_AUTO_CREATE_BUCKET: Joi.string().valid('true', 'false').default('true'),
   // Message bus to apps/payment — publishing the account-provisioning
   // request. Default matches the local Homebrew RabbitMQ instance.
