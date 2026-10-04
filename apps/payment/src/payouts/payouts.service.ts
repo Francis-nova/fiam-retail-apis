@@ -13,6 +13,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Queue } from 'bullmq';
 import { DataSource, EntityManager, Repository } from 'typeorm';
 import Decimal from 'decimal.js';
+import { PaymentProviderKey } from '../wallets/entities/address.entity';
 import { CurrencyCode } from '@app/common';
 import { PaymentConfig } from '../config/configuration';
 import { WalletsService } from '../wallets/wallets.service';
@@ -240,8 +241,9 @@ export class PayoutsService {
     return this.applyTransferResult(transaction, result);
   }
 
-  // Amount already sent (or in flight) inside the limit window. Failed
-  // payouts are refunded, so they don't count against the cap.
+  // Payout amount already sent (or in flight) inside the limit window. Failed
+  // payouts are refunded, so they don't count against the cap. The limit is
+  // outflow-only — inflows are never restricted by it.
   private async outflowSince(
     manager: EntityManager,
     walletId: string,
@@ -252,6 +254,9 @@ export class PayoutsService {
       .select('COALESCE(SUM(t.amount), 0)', 'total')
       .where('t.walletId = :walletId', { walletId })
       .andWhere('t.type = :type', { type: TransactionType.DEBIT })
+      // Payouts only: a staff-posted adjustment (provider MANUAL) is not the
+      // customer sending money, so it must not use up their cap.
+      .andWhere('t.provider <> :manual', { manual: PaymentProviderKey.MANUAL })
       .andWhere('t.status IN (:...statuses)', {
         statuses: [
           TransactionStatus.PENDING,
