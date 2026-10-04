@@ -21,13 +21,18 @@ RUN npm ci --omit=dev
 FROM node:22-alpine AS runtime
 ENV NODE_ENV=production
 WORKDIR /app
-COPY --from=prod-deps /app/node_modules ./node_modules
-COPY --from=builder /app/dist ./dist
+COPY --from=prod-deps --chown=node:node /app/node_modules ./node_modules
+COPY --from=builder --chown=node:node /app/dist ./dist
 # tesseract.js (apps/auth's KYC OCR) resolves 'eng.traineddata' relative to
 # the process cwd by default (no langPath/cachePath set in ocr.service.ts) —
 # this ships the trained-data file locally so OCR works without an outbound
 # fetch to the jsdelivr CDN on first use.
-COPY --from=builder /app/eng.traineddata ./eng.traineddata
+COPY --from=builder --chown=node:node /app/eng.traineddata ./eng.traineddata
+
+# Don't run as root: a compromised process shouldn't own the container. The
+# cwd stays writable for tesseract.js's working files.
+RUN chown node:node /app
+USER node
 
 # Informational only — the actual bound port depends on which app's
 # `command:` this container is running (7001 auth / 7002 postoffice / 7003

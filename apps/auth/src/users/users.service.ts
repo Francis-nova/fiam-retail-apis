@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  HttpException,
+  HttpStatus,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import {
@@ -15,6 +20,13 @@ import {
 export function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
+
+// 5 wrong tries lock that secret for 15 minutes. A 4-digit PIN has only
+// 10,000 values, so the limit has to be per account (not per IP/session).
+export const MAX_FAILED_ATTEMPTS = 5;
+export const LOCKOUT_SECONDS = 15 * 60;
+
+export type SecretKind = 'password' | 'pin';
 
 @Injectable()
 export class UsersService {
@@ -200,5 +212,53 @@ export class UsersService {
       })
       .execute();
     return (result.affected ?? 0) === 1;
+  }
+
+  /**
+   * Runs `check` (a password/PIN comparison) under a per-account attempt
+   * limit. The attempt is reserved with one atomic UPDATE *before* `check`
+   * runs, so a burst of parallel guesses can't all pass a stale "not locked"
+   * read: once MAX_FAILED_ATTEMPTS are reserved the row is locked and every
+   * further call is rejected without being evaluated. A correct answer clears
+   * the counter.
+   */
+  async guardedVerify(
+    userId: string,
+    kind: SecretKind,
+    check: () => Promise<boolean>,
+  ): Promise<boolean> {
+    // `kind` is a closed union, never user input, so interpolating the column
+    // prefix is safe.
+    const attempts = `${kind}_failed_attempts`;
+    const lockedUntil = `${kind}_locked_until`;
+    const expired = `(${lockedUntil} IS NOT NULL AND ${lockedUntil} <= now())`;
+    const next = `(CASE WHEN ${expired} THEN 1 ELSE ${attempts} + 1 END)`;
+    const reserved: unknown = await this.usersRepo.query(
+      `UPDATE users SET
+         ${attempts} = ${next},
+         ${lockedUntil} = CASE WHEN ${next} >= $2
+                               THEN now() + make_interval(secs => $3)
+                               ELSE NULL END
+       WHERE id = $1 AND (${lockedUntil} IS NULL OR ${expired})
+       RETURNING id`,
+      [userId, MAX_FAILED_ATTEMPTS, LOCKOUT_SECONDS],
+    );
+    // pg returns [rows, affectedCount] for UPDATE ... RETURNING.
+    const rows = Array.isArray(reserved) ? (reserved[0] as unknown) : [];
+    if (!Array.isArray(rows) || rows.length === 0) {
+      throw new HttpException(
+        `Too many failed attempts. Try again in ${Math.ceil(LOCKOUT_SECONDS / 60)} minutes.`,
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
+    const ok = await check();
+    if (ok) {
+      await this.usersRepo.query(
+        `UPDATE users SET ${attempts} = 0, ${lockedUntil} = NULL WHERE id = $1`,
+        [userId],
+      );
+    }
+    return ok;
   }
 }

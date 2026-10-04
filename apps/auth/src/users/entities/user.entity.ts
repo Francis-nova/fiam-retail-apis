@@ -101,6 +101,23 @@ export class User {
   @Column({ name: 'transaction_pin_hash', type: 'varchar', nullable: true })
   transactionPinHash: string | null;
 
+  // Brute-force counters — see UsersService.guardedVerify.
+  @Column({ name: 'password_failed_attempts', type: 'int', default: 0 })
+  passwordFailedAttempts: number;
+
+  @Column({
+    name: 'password_locked_until',
+    type: 'timestamptz',
+    nullable: true,
+  })
+  passwordLockedUntil: Date | null;
+
+  @Column({ name: 'pin_failed_attempts', type: 'int', default: 0 })
+  pinFailedAttempts: number;
+
+  @Column({ name: 'pin_locked_until', type: 'timestamptz', nullable: true })
+  pinLockedUntil: Date | null;
+
   @Column({
     name: 'transaction_pin_set_at',
     type: 'timestamptz',

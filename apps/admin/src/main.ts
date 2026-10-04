@@ -3,11 +3,13 @@ import { Logger, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
-import { HttpExceptionFilter } from '@app/common';
+import { NestExpressApplication } from '@nestjs/platform-express';
+import { HttpExceptionFilter, hardenHttp, swaggerEnabled } from '@app/common';
 import { AdminConfig } from './config/configuration';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  hardenHttp(app);
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   app.useGlobalFilters(new HttpExceptionFilter());
 
@@ -19,7 +21,7 @@ async function bootstrap() {
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
   });
 
-  if (config.get('env', { infer: true }) !== 'production') {
+  if (swaggerEnabled(config.get('env', { infer: true }))) {
     const document = SwaggerModule.createDocument(
       app,
       new DocumentBuilder()

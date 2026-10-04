@@ -16,7 +16,7 @@ interface EnvVars {
   VFD_WALLET_BASE_URL: string;
   VFD_CONSUMER_KEY: string;
   VFD_CONSUMER_SECRET: string;
-  VFD_WEBHOOK_SECRET: string;
+  VFD_WEBHOOK_AUTH_TOKEN: string;
   VFD_BANK_CODE: string;
   VFD_WALLET_NAME: string;
 }
@@ -56,7 +56,7 @@ export const envSchema = Joi.object<EnvVars>({
     .default('https://api-devapps.vfdbank.systems/vtech-wallet/api/v2/wallet2'),
   VFD_CONSUMER_KEY: Joi.string().allow('').default(''),
   VFD_CONSUMER_SECRET: Joi.string().allow('').default(''),
-  VFD_WEBHOOK_SECRET: Joi.string().allow('').default(''),
+  VFD_WEBHOOK_AUTH_TOKEN: Joi.string().allow('').default(''),
   // VFD's own bank code, used to decide intra vs inter transferType.
   // Defaults to the sandbox value from VFD's "Test Accounts" docs section.
   VFD_BANK_CODE: Joi.string().default('999999'),

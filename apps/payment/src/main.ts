@@ -7,11 +7,14 @@ import {
   HttpExceptionFilter,
   PAYMENT_ACCOUNT_PROVISIONING_QUEUE,
 } from '@app/common';
+import { NestExpressApplication } from '@nestjs/platform-express';
+import { hardenHttp, swaggerEnabled } from '@app/common';
 import { AppModule } from './app.module';
 import { PaymentConfig } from './config/configuration';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  hardenHttp(app);
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   app.useGlobalFilters(new HttpExceptionFilter());
 
@@ -25,16 +28,18 @@ async function bootstrap() {
     });
   }
 
-  const swaggerConfig = new DocumentBuilder()
-    .setTitle('Fiam Payment API')
-    .setDescription(
-      'Wallet/address provisioning, provider webhook, and wallet-read endpoints.',
-    )
-    .setVersion('1.0')
-    .addBearerAuth()
-    .build();
-  const document = SwaggerModule.createDocument(app, swaggerConfig);
-  SwaggerModule.setup('docs', app, document);
+  if (swaggerEnabled(configService.get('env', { infer: true }))) {
+    const swaggerConfig = new DocumentBuilder()
+      .setTitle('Fiam Payment API')
+      .setDescription(
+        'Wallet/address provisioning, provider webhook, and wallet-read endpoints.',
+      )
+      .setVersion('1.0')
+      .addBearerAuth()
+      .build();
+    const document = SwaggerModule.createDocument(app, swaggerConfig);
+    SwaggerModule.setup('docs', app, document);
+  }
 
   const rabbitmqUrl = configService.get<string>('rabbitmq.url', {
     infer: true,
@@ -61,6 +66,5 @@ async function bootstrap() {
 
   const logger = new Logger('Bootstrap');
   logger.log(`Payment API running on port ${port}`);
-  logger.log(`Swagger docs available at ${await app.getUrl()}/docs`);
 }
 void bootstrap();

@@ -60,7 +60,10 @@ export class DeletionService {
     if (user.status !== UserStatus.ACTIVE) {
       throw new BadRequestException('This account cannot request deletion');
     }
-    if (!(await this.passwords.verify(user.passwordHash, password))) {
+    const passwordOk = await this.users.guardedVerify(userId, 'password', () =>
+      this.passwords.verify(user.passwordHash, password),
+    );
+    if (!passwordOk) {
       // 400, not 401: a wrong password here must not sign the customer out.
       throw new BadRequestException('Incorrect password');
     }

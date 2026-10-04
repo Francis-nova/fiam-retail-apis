@@ -1,3 +1,4 @@
+import { Throttle } from '@nestjs/throttler';
 import {
   Body,
   Controller,
@@ -21,12 +22,14 @@ import { AllowPendingPasswordChange } from './roles.decorator';
 export class AuthController {
   constructor(private readonly auth: AuthService) {}
 
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post('login')
   @HttpCode(200)
   login(@Body() dto: LoginDto, @ClientIp() ip: string | null) {
     return this.auth.login(dto.email, dto.password, ip);
   }
 
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @Post('refresh')
   @HttpCode(200)
   refresh(@Body() dto: RefreshDto) {
@@ -50,6 +53,7 @@ export class AuthController {
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
   @AllowPendingPasswordChange()
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post('change-password')
   @HttpCode(200)
   changePassword(

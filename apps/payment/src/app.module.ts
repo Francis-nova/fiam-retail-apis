@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { RateLimitModule } from '@app/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { BullModule } from '@nestjs/bullmq';
 import { AppController } from './app.controller';
@@ -16,6 +17,7 @@ import { InternalModule } from './internal/internal.module';
 
 @Module({
   imports: [
+    RateLimitModule,
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: 'apps/payment/.env',

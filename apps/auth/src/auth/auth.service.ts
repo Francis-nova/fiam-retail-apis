@@ -231,9 +231,10 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    const passwordMatches = await this.passwordService.verify(
-      user.passwordHash,
-      password,
+    const passwordMatches = await this.usersService.guardedVerify(
+      user.id,
+      'password',
+      () => this.passwordService.verify(user.passwordHash, password),
     );
     if (!passwordMatches) {
       throw new UnauthorizedException('Invalid credentials');
@@ -314,9 +315,11 @@ export class AuthService {
       throw new UnauthorizedException('Transaction PIN not set');
     }
 
-    const pinMatches = await this.passwordService.verify(
-      user.transactionPinHash,
-      pin,
+    const pinHash = user.transactionPinHash;
+    const pinMatches = await this.usersService.guardedVerify(
+      user.id,
+      'pin',
+      () => this.passwordService.verify(pinHash, pin),
     );
     if (!pinMatches) {
       await this.pendingLoginsRepo.update(pending.id, {
@@ -378,9 +381,9 @@ export class AuthService {
     if (!user.transactionPinHash) {
       throw new BadRequestException('No transaction PIN set');
     }
-    const matches = await this.passwordService.verify(
-      user.transactionPinHash,
-      pin,
+    const pinHash = user.transactionPinHash;
+    const matches = await this.usersService.guardedVerify(userId, 'pin', () =>
+      this.passwordService.verify(pinHash, pin),
     );
     if (!matches) {
       throw new UnauthorizedException('Incorrect PIN');
@@ -399,9 +402,11 @@ export class AuthService {
         'No transaction PIN set — use create instead',
       );
     }
-    const currentMatches = await this.passwordService.verify(
-      user.transactionPinHash,
-      currentPin,
+    const currentHash = user.transactionPinHash;
+    const currentMatches = await this.usersService.guardedVerify(
+      userId,
+      'pin',
+      () => this.passwordService.verify(currentHash, currentPin),
     );
     if (!currentMatches) {
       throw new UnauthorizedException('Current PIN is incorrect');
@@ -426,9 +431,10 @@ export class AuthService {
     confirmNewPassword: string,
   ): Promise<void> {
     const user = await this.usersService.findById(userId);
-    const currentMatches = await this.passwordService.verify(
-      user.passwordHash,
-      currentPassword,
+    const currentMatches = await this.usersService.guardedVerify(
+      userId,
+      'password',
+      () => this.passwordService.verify(user.passwordHash, currentPassword),
     );
     if (!currentMatches) {
       throw new UnauthorizedException('Current password is incorrect');
