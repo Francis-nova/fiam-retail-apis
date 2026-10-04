@@ -296,7 +296,14 @@ OBJECT_STORAGE_AUTO_CREATE_BUCKET=false               # bucket made in the Hetzn
 OBJECT_STORAGE_ACCESS_KEY=...
 OBJECT_STORAGE_SECRET_KEY=...
 OBJECT_STORAGE_BUCKET=fiam-kyc-staging
+OBJECT_STORAGE_PREFIX=                                # optional folder in a SHARED bucket, e.g. fiam-staging/
 ```
+
+Staging uses the shared bucket `awuya-digital` with the folder `fiam-staging/`
+(documents in `fiam-staging/kyc/`, encrypted backups in `fiam-staging/backups/`).
+The prefix is applied by the storage layer only, so database keys stay
+prefix-free. A key for a shared bucket can read *everything* in it, so
+production should use its own bucket and key, with versioning on.
 
 **Cut-over (no downtime, nothing deleted from MinIO):**
 
@@ -315,6 +322,7 @@ OBJECT_STORAGE_BUCKET=fiam-kyc-staging
      --env DST_ENDPOINT="$HETZNER_ENDPOINT" --env DST_PORT=443 --env DST_USE_SSL=true \
      --env DST_REGION="$HETZNER_REGION" --env DST_ACCESS_KEY="$HETZNER_KEY" \
      --env DST_SECRET_KEY="$HETZNER_SECRET" --env DST_BUCKET="$HETZNER_BUCKET" \
+     --env DST_PREFIX="$HETZNER_PREFIX" \
      "$IMG" node dist/apps/auth/apps/auth/src/storage/migrate-storage.js
    docker service logs migrate-storage --no-trunc | tail; docker service rm migrate-storage
    ```

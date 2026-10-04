@@ -9,6 +9,7 @@
 #   BACKUP_KEEP_DAYS      local retention in days   (default 14)
 #   BACKUP_RCLONE_REMOTE  e.g. "hetzner:fiam-backups/staging" (optional, needs rclone;
 #                         configure the remote with RCLONE_CONFIG_<NAME>_* env vars)
+#   BACKUP_REMOTE_KEEP_DAYS  retention on the remote   (default 30; 0 = keep forever)
 #   BACKUP_ENCRYPTION_PASSPHRASE  REQUIRED when uploading off-box: every file is
 #                         AES-256 encrypted first (dumps contain personal data)
 set -euo pipefail
@@ -66,6 +67,13 @@ if [ -n "${BACKUP_RCLONE_REMOTE:-}" ]; then
   echo "copying encrypted backup off-box to $BACKUP_RCLONE_REMOTE"
   rclone copy "$ENC" "$BACKUP_RCLONE_REMOTE/$STAMP"
   rm -rf "$ENC"
+  # Remote retention: only ever removes backups older than the window, and
+  # only under this backup path — never anything else in a shared bucket.
+  REMOTE_KEEP="${BACKUP_REMOTE_KEEP_DAYS:-30}"
+  if [ "$REMOTE_KEEP" -gt 0 ]; then
+    rclone delete "$BACKUP_RCLONE_REMOTE" --min-age "${REMOTE_KEEP}d" --rmdirs >/dev/null 2>&1 || \
+      echo "warning: could not prune old remote backups" >&2
+  fi
 fi
 
 # Retention (local only; manage the remote's lifecycle on the remote).
