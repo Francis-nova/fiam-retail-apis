@@ -35,6 +35,7 @@ export class StaffService {
       role: s.role,
       status: s.status,
       mustChangePassword: s.mustChangePassword,
+      twoFactorEnabled: !!s.totpEnabledAt,
       lastLoginAt: s.lastLoginAt,
       createdAt: s.createdAt,
     };
@@ -137,6 +138,34 @@ export class StaffService {
       ip,
     });
     return this.view(staff);
+  }
+
+  async resetTwoFactor(
+    id: string,
+    actor: AuthenticatedStaff,
+    ip: string | null,
+  ) {
+    const staff = await this.repo.findOneBy({ id });
+    if (!staff) throw new NotFoundException();
+    await this.repo.update(id, {
+      totpSecretEnc: null,
+      totpEnabledAt: null,
+      totpLastStep: null,
+      recoveryCodeHashes: [],
+    });
+    await this.refreshRepo.update(
+      { staffId: id, revokedAt: IsNull() },
+      { revokedAt: new Date() },
+    );
+    await this.audit.record({
+      staffId: actor.staffId,
+      staffEmail: actor.email,
+      action: 'staff.mfa_reset',
+      resourceType: 'staff',
+      resourceId: id,
+      ip,
+    });
+    return { ok: true };
   }
 
   async resetPassword(

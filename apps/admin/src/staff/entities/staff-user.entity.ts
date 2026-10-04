@@ -55,6 +55,26 @@ export class StaffUser {
   @Column({ name: 'locked_until', type: 'timestamptz', nullable: true })
   lockedUntil: Date | null;
 
+  // Two-factor (TOTP). `totpSecretEnc` is AES-GCM ciphertext; a secret with no
+  // `totpEnabledAt` is a pending enrolment that hasn't been confirmed yet.
+  @Column({ name: 'totp_secret_enc', type: 'text', nullable: true })
+  totpSecretEnc: string | null;
+
+  @Column({ name: 'totp_enabled_at', type: 'timestamptz', nullable: true })
+  totpEnabledAt: Date | null;
+
+  // Last accepted 30s time step — a code can't be used twice (replay).
+  @Column({ name: 'totp_last_step', type: 'bigint', nullable: true })
+  totpLastStep: string | null;
+
+  // sha256 of each unused recovery code.
+  @Column({
+    name: 'recovery_code_hashes',
+    type: 'jsonb',
+    default: () => "'[]'",
+  })
+  recoveryCodeHashes: string[];
+
   @Column({ name: 'last_login_at', type: 'timestamptz', nullable: true })
   lastLoginAt: Date | null;
 

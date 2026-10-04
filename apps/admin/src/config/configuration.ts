@@ -15,6 +15,13 @@ export interface AdminConfig {
     accessTtl: string;
     refreshTtlDays: number;
   };
+  totp: {
+    // 32-byte hex key that encrypts staff TOTP secrets at rest.
+    encryptionKey: string;
+    issuer: string;
+    // When true every staff member must enrol in 2FA before they can sign in.
+    required: boolean;
+  };
   services: {
     authUrl: string;
     paymentUrl: string;
@@ -35,6 +42,11 @@ export default (): AdminConfig => ({
     accessSecret: process.env.ADMIN_JWT_ACCESS_SECRET as string,
     accessTtl: process.env.ADMIN_JWT_ACCESS_TTL ?? '15m',
     refreshTtlDays: parseInt(process.env.ADMIN_JWT_REFRESH_TTL_DAYS ?? '7', 10),
+  },
+  totp: {
+    encryptionKey: process.env.ADMIN_TOTP_ENCRYPTION_KEY as string,
+    issuer: process.env.ADMIN_TOTP_ISSUER ?? 'Fiam Console',
+    required: process.env.ADMIN_REQUIRE_2FA === 'true',
   },
   services: {
     authUrl: process.env.AUTH_INTERNAL_URL ?? 'http://localhost:7001',

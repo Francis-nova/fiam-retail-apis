@@ -69,6 +69,18 @@ export class StaffController {
     return this.staff.resetPassword(id, actor, ip);
   }
 
+  // Lost phone / lost recovery codes: wipes their authenticator so they can
+  // enrol again at next sign-in. Audited, and signs them out everywhere.
+  @Post(':id/reset-2fa')
+  @HttpCode(200)
+  resetTwoFactor(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @CurrentStaff() actor: AuthenticatedStaff,
+    @ClientIp() ip: string | null,
+  ) {
+    return this.staff.resetTwoFactor(id, actor, ip);
+  }
+
   @Post(':id/unlock')
   @HttpCode(200)
   unlock(

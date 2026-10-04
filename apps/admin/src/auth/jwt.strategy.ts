@@ -38,6 +38,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'admin-jwt') {
       email: staff.email,
       role: staff.role,
       mustChangePassword: staff.mustChangePassword,
+      twoFactorEnabled: !!staff.totpEnabledAt,
     };
   }
 }

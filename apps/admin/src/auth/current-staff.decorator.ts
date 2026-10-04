@@ -9,6 +9,7 @@ export class AuthenticatedStaff {
   email: string;
   role: StaffRole;
   mustChangePassword: boolean;
+  twoFactorEnabled: boolean;
 }
 
 export const CurrentStaff = createParamDecorator(

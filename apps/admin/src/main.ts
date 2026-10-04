@@ -6,6 +6,7 @@ import { AppModule } from './app.module';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { HttpExceptionFilter, hardenHttp, swaggerEnabled } from '@app/common';
 import { AdminConfig } from './config/configuration';
+import { ipAllowlist, parseAllowedIps } from './common/ip-allowlist';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -14,6 +15,16 @@ async function bootstrap() {
   app.useGlobalFilters(new HttpExceptionFilter());
 
   const config = app.get<ConfigService<AdminConfig, true>>(ConfigService);
+
+  // Optional network restriction: only these IPs/CIDRs may reach the API.
+  // Unset = not enforced. Registered first so nothing else runs for outsiders.
+  const allowed = parseAllowedIps(process.env.ADMIN_ALLOWED_IPS);
+  if (allowed) {
+    app.use(ipAllowlist(allowed));
+    new Logger('Bootstrap').log(
+      `IP allowlist enforced (${allowed.length} entries)`,
+    );
+  }
   // Unlike the customer APIs this one is always called from a browser, so
   // CORS stays on in production — CORS_ORIGIN must then be the console's origin.
   app.enableCors({
