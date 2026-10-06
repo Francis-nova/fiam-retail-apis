@@ -54,10 +54,10 @@ export class OtpService {
       }),
     );
 
-    // TODO: once the postoffice service + RabbitMQ exist, publish an
-    // `auth.otp.requested` event instead of logging. Logging is a dev-only
-    // stand-in so the registration/login flow is usable end-to-end today.
-    this.logger.log(`OTP for user ${userId} (${purpose}): ${code}`);
+    // The code itself is never logged — delivery is postoffice's job.
+    this.logger.log(
+      `OTP generated for user ${userId} (${purpose}): [REDACTED]`,
+    );
 
     return code;
   }

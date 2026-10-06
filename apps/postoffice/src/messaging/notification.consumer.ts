@@ -56,7 +56,7 @@ export class NotificationConsumer {
       channel.ack(originalMsg);
     } catch (err) {
       this.logger.error(
-        `Notification delivery failed for ${message.recipient}: ${(err as Error).message}`,
+        `Notification delivery failed for ${message.channel} recipient [REDACTED]: ${(err as Error).message}`,
       );
       // No requeue — a permanently-failing send (bad address, missing
       // provider creds) would otherwise loop forever. Routes to the queue's

@@ -15,7 +15,7 @@ export class PassthroughBvnProvider implements BvnProvider {
 
   verify(bvn: string, applicant: BvnApplicant): Promise<BvnVerificationResult> {
     this.logger.warn(
-      `KYC_PROVIDER=passthrough: skipping BVN lookup for ${bvn.slice(0, 3)}********`,
+      `KYC_PROVIDER=passthrough: skipping BVN lookup for [REDACTED]`,
     );
     return Promise.resolve({
       matched: true,

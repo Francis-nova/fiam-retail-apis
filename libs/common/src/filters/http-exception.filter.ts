@@ -7,6 +7,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
+import { captureServerError } from '../observability/error-tracking';
 
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
@@ -29,6 +30,11 @@ export class HttpExceptionFilter implements ExceptionFilter {
       this.logger.error(
         exception instanceof Error ? exception.stack : exception,
       );
+    }
+    // Only genuine server faults go to error tracking; 4xx are the caller's
+    // mistakes (wrong PIN, validation) and would just be noise.
+    if (Number(status) >= 500) {
+      captureServerError(exception);
     }
 
     response.status(status).json({

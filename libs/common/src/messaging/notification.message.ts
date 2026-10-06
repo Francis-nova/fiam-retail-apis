@@ -33,4 +33,17 @@ export enum PushTemplate {
   MONEY_RECEIVED = 'push-money-received',
   PAYOUT_SUCCESSFUL = 'push-payout-successful',
   PAYOUT_FAILED = 'push-payout-failed',
+  // Tier-upgrade review outcome (no data needed).
+  // Staff-posted wallet adjustment. data: { amount, transactionId }
+  ACCOUNT_CREDITED = 'push-account-credited',
+  ACCOUNT_DEBITED = 'push-account-debited',
+  // A deletion request was declined; the reason is in the email/app.
+  DELETION_REJECTED = 'push-deletion-rejected',
+  KYC_APPROVED = 'push-kyc-approved',
+  KYC_REJECTED = 'push-kyc-rejected',
+  // Someone has been guessing the customer's password/PIN until it locked.
+  // data: { kind: 'password' | 'pin' }
+  SECURITY_LOCKOUT = 'push-security-lockout',
+  // Correct password entered on a device we haven't seen before.
+  SECURITY_NEW_DEVICE = 'push-security-new-device',
 }

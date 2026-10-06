@@ -12,6 +12,7 @@ import {
   BvnVerificationResult,
 } from './bvn-provider.interface';
 import { QoreIdTokenService } from './qoreid-token.service';
+import { safeJson } from '@app/common';
 
 interface QoreIdBvnResponse {
   status?: { state?: string; status?: string };
@@ -70,7 +71,7 @@ export class QoreIdBvnProvider implements BvnProvider {
     }
     if (!response.ok || !body) {
       this.logger.error(
-        `QoreID BVN lookup failed: ${response.status} ${JSON.stringify(body)}`,
+        `QoreID BVN lookup failed: ${response.status} ${safeJson(body)}`,
       );
       throw new ServiceUnavailableException('Failed to verify BVN');
     }

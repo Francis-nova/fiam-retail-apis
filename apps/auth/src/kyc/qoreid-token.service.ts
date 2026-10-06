@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AuthConfig } from '../config/configuration';
+import { safeJson } from '@app/common';
 
 interface QoreIdTokenResponse {
   accessToken: string;
@@ -51,7 +52,7 @@ export class QoreIdTokenService {
 
     if (!response.ok || !body?.accessToken) {
       this.logger.error(
-        `QoreID token request failed: ${response.status} ${JSON.stringify(body)}`,
+        `QoreID token request failed: ${response.status} ${safeJson(body)}`,
       );
       throw new ServiceUnavailableException(
         'Failed to authenticate with identity verification provider',

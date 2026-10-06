@@ -23,11 +23,14 @@ export class DevicesService {
     return !!existing;
   }
 
+  // `created` is true only the first time this device is trusted — i.e. the
+  // customer is activating on a device we haven't seen. `hadOtherDevices`
+  // says whether they already had another one (a device *change*).
   async trust(
     userId: string,
     deviceId: string,
     deviceName?: string | null,
-  ): Promise<void> {
+  ): Promise<{ created: boolean; hadOtherDevices: boolean }> {
     const existing = await this.trustedDevicesRepo.findOne({
       where: { userId, deviceId },
     });
@@ -36,8 +39,9 @@ export class DevicesService {
         lastSeenAt: new Date(),
         deviceName: deviceName ?? existing.deviceName,
       });
-      return;
+      return { created: false, hadOtherDevices: true };
     }
+    const hadOtherDevices = await this.trustedDevicesRepo.existsBy({ userId });
     await this.trustedDevicesRepo.save(
       this.trustedDevicesRepo.create({
         userId,
@@ -47,6 +51,7 @@ export class DevicesService {
         lastSeenAt: new Date(),
       }),
     );
+    return { created: true, hadOtherDevices };
   }
 
   listForUser(userId: string): Promise<TrustedDevice[]> {

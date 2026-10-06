@@ -1,3 +1,4 @@
+import { Throttle } from '@nestjs/throttler';
 import {
   Body,
   Controller,
@@ -50,16 +51,19 @@ function requestMeta(req: Request): RequestMeta {
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post('register')
   register(@Body() dto: RegisterDto) {
     return this.authService.register(dto);
   }
 
+  @Throttle({ default: { limit: 3, ttl: 60_000 } })
   @Post('otp/resend')
   resendRegistrationOtp(@Body() dto: ResendRegistrationOtpDto) {
     return this.authService.resendRegistrationOtp(dto.email);
   }
 
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post('otp/verify')
   verifyOtp(@Body() dto: VerifyOtpDto, @Req() req: Request) {
     return this.authService.verifyOtp(
@@ -70,11 +74,13 @@ export class AuthController {
     );
   }
 
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post('login')
   login(@Body() dto: LoginDto, @Req() req: Request) {
     return this.authService.login(dto.email, dto.password, requestMeta(req));
   }
 
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post('login/pin')
   confirmLoginPin(@Body() dto: VerifyLoginPinDto, @Req() req: Request) {
     return this.authService.confirmLoginPin(
@@ -96,6 +102,7 @@ export class AuthController {
     );
   }
 
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post('pin/verify')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
@@ -107,6 +114,7 @@ export class AuthController {
     await this.authService.verifyTransactionPin(user.userId, dto.pin);
   }
 
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post('pin/reset')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
@@ -123,6 +131,7 @@ export class AuthController {
     );
   }
 
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post('password/change')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
@@ -167,6 +176,7 @@ export class AuthController {
     return this.authService.addPhone(user.userId, dto.phone);
   }
 
+  @Throttle({ default: { limit: 3, ttl: 60_000 } })
   @Post('phone/resend')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
@@ -196,16 +206,19 @@ export class AuthController {
     return this.authService.verifyBvnOtp(user.userId, dto.code);
   }
 
+  @Throttle({ default: { limit: 3, ttl: 60_000 } })
   @Post('password-reset/request')
   requestPasswordReset(@Body() dto: RequestPasswordResetDto) {
     return this.authService.requestPasswordReset(dto.email);
   }
 
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post('password-reset/verify')
   verifyPasswordResetOtp(@Body() dto: VerifyPasswordResetOtpDto) {
     return this.authService.verifyPasswordResetOtp(dto.email, dto.code);
   }
 
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post('password-reset/confirm')
   @HttpCode(HttpStatus.NO_CONTENT)
   async confirmPasswordReset(@Body() dto: ConfirmPasswordResetDto) {

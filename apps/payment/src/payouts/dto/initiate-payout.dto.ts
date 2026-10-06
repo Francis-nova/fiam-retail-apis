@@ -3,6 +3,7 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  Matches,
   MaxLength,
   MinLength,
 } from 'class-validator';
@@ -11,6 +12,11 @@ import {
 // checked in PayoutsService (cross-field rules aren't worth a custom
 // class-validator decorator for a two-field XOR).
 export class InitiatePayoutDto {
+  // The customer's 4-digit transaction PIN — verified server-side as part of
+  // this request (never trust a separate "verify" call from the client).
+  @Matches(/^\d{4}$/, { message: 'PIN must be exactly 4 digits' })
+  pin: string;
+
   @IsOptional()
   @IsUUID()
   beneficiaryId?: string;

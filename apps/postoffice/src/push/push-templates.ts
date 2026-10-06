@@ -44,5 +44,47 @@ export function renderPush(
         body: `Your transfer of ${amount} didn't go through. The money has been returned to your wallet.`,
         data: tapData,
       };
+    case PushTemplate.ACCOUNT_CREDITED:
+      return {
+        title: 'Account credited',
+        body: `${amount} was added to your Fiam wallet.`,
+        data: tapData,
+      };
+    case PushTemplate.ACCOUNT_DEBITED:
+      return {
+        title: 'Account debited',
+        body: `${amount} was debited from your Fiam wallet. Open the app for details, or contact support if you don't recognise this.`,
+        data: tapData,
+      };
+    case PushTemplate.DELETION_REJECTED:
+      return {
+        title: 'Account deletion request',
+        body: "We couldn't process your request to delete your account. Open the app to see why.",
+        data: { type: 'account-deletion' },
+      };
+    case PushTemplate.KYC_APPROVED:
+      return {
+        title: "You're verified",
+        body: 'Your account has been upgraded to Tier 3. Higher limits are now available.',
+        data: { type: 'kyc' },
+      };
+    case PushTemplate.SECURITY_LOCKOUT:
+      return {
+        title: 'Security alert',
+        body: `Someone entered the wrong ${data.kind === 'pin' ? 'PIN' : 'password'} on your Fiam account several times, so we locked it for 15 minutes. If this wasn't you, change your password.`,
+        data: { type: 'security' },
+      };
+    case PushTemplate.SECURITY_NEW_DEVICE:
+      return {
+        title: 'New device sign-in attempt',
+        body: "Someone signed in to your Fiam account from a new device. If this wasn't you, change your password right away.",
+        data: { type: 'security' },
+      };
+    case PushTemplate.KYC_REJECTED:
+      return {
+        title: 'Update needed on your verification',
+        body: "We couldn't approve your upgrade. Open the app to see why and submit again.",
+        data: { type: 'kyc' },
+      };
   }
 }

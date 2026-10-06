@@ -3,10 +3,11 @@ include mixins
 
 block content
   - var isCredit = direction === 'credit'
+  - var isAdjustment = typeof adjustment !== 'undefined' && adjustment === 'true'
   - var badgeLabel = isCredit ? 'Credit' : 'Debit'
-  - var title = isCredit ? 'Money received' : 'Money sent'
+  - var title = isAdjustment ? (isCredit ? 'Account credited' : 'Account debited') : (isCredit ? 'Money received' : 'Money sent')
   - var signedAmount = (isCredit ? '+' : '-') + amount
-  - var counterpartyLabel = isCredit ? 'From' : 'To'
+  - var counterpartyLabel = isAdjustment ? 'Description' : (isCredit ? 'From' : 'To')
   +badge(badgeLabel, direction)
   +heading(title)
   +greeting(firstName)
@@ -16,3 +17,6 @@ block content
     +row('Reference', reference)
     +row('Status', status)
     +row('Date', occurredAt)
+  if isAdjustment && !isCredit
+    p(style="margin:16px 0 0 0; font-size:14px; line-height:1.6; color:#7F7F7F;")
+      | If you don't recognise this adjustment, please contact Fiam support.

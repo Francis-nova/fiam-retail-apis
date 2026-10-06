@@ -11,6 +11,9 @@ export enum UserStatus {
   PENDING_VERIFICATION = 'PENDING_VERIFICATION',
   ACTIVE = 'ACTIVE',
   SUSPENDED = 'SUSPENDED',
+  // Terminal: set by the console's close-account action. Email/phone are
+  // anonymized; KYC identifiers and records are retained.
+  CLOSED = 'CLOSED',
 }
 
 // CBN tiered-KYC framework — every customer starts at Tier 1 on signup.
@@ -98,6 +101,28 @@ export class User {
   @Column({ name: 'transaction_pin_hash', type: 'varchar', nullable: true })
   transactionPinHash: string | null;
 
+  // End of the post-new-device outflow limit window (CBN circular, Mar 2026).
+  // Null/past = no limit. See UsersService.startDeviceLimit.
+  @Column({ name: 'device_limit_until', type: 'timestamptz', nullable: true })
+  deviceLimitUntil: Date | null;
+
+  // Brute-force counters — see UsersService.guardedVerify.
+  @Column({ name: 'password_failed_attempts', type: 'int', default: 0 })
+  passwordFailedAttempts: number;
+
+  @Column({
+    name: 'password_locked_until',
+    type: 'timestamptz',
+    nullable: true,
+  })
+  passwordLockedUntil: Date | null;
+
+  @Column({ name: 'pin_failed_attempts', type: 'int', default: 0 })
+  pinFailedAttempts: number;
+
+  @Column({ name: 'pin_locked_until', type: 'timestamptz', nullable: true })
+  pinLockedUntil: Date | null;
+
   @Column({
     name: 'transaction_pin_set_at',
     type: 'timestamptz',
@@ -131,6 +156,20 @@ export class User {
     nullable: true,
   })
   paymentAccountProvisioningRequestedAt: Date | null;
+
+  @Column({
+    name: 'tier_upgrade_decided_at',
+    type: 'timestamptz',
+    nullable: true,
+  })
+  tierUpgradeDecidedAt: Date | null;
+
+  // Shown to the customer when the upgrade is rejected.
+  @Column({ name: 'tier_upgrade_decision_note', type: 'text', nullable: true })
+  tierUpgradeDecisionNote: string | null;
+
+  @Column({ name: 'closed_at', type: 'timestamptz', nullable: true })
+  closedAt: Date | null;
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

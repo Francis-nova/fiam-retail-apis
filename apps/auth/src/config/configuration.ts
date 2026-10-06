@@ -11,6 +11,12 @@ export interface AuthConfig {
     refreshSecret: string;
     refreshTtl: string;
   };
+  // Outflow cap after activating on a new device (CBN circular 12 Mar 2026:
+  // N20,000 for the first 24 hours; banks may set it lower, never higher).
+  deviceLimit: {
+    amountNgn: string;
+    hours: number;
+  };
   otp: {
     ttlSeconds: number;
     // Named codeLength (not length) — a plain "length" key on this nested
@@ -37,6 +43,13 @@ export interface AuthConfig {
     endpoint: string;
     port: number;
     useSsl: boolean;
+    region: string;
+    autoCreateBucket: boolean;
+    // Folder inside a shared bucket, e.g. "fiam-staging/". Applied by the
+    // storage layer only; keys stored in the database stay prefix-free.
+    keyPrefix: string;
+    // Escape hatch for a bucket used by this app alone (see StorageService).
+    allowBucketRoot: boolean;
     accessKey: string;
     secretKey: string;
     bucket: string;
@@ -58,6 +71,10 @@ export default (): AuthConfig => ({
     accessTtl: process.env.JWT_ACCESS_TTL ?? '15m',
     refreshSecret: process.env.JWT_REFRESH_SECRET as string,
     refreshTtl: process.env.JWT_REFRESH_TTL ?? '30d',
+  },
+  deviceLimit: {
+    amountNgn: process.env.NEW_DEVICE_LIMIT_NGN ?? '20000',
+    hours: parseInt(process.env.NEW_DEVICE_LIMIT_HOURS ?? '24', 10),
   },
   otp: {
     ttlSeconds: parseInt(process.env.OTP_TTL_SECONDS ?? '300', 10),
@@ -87,6 +104,14 @@ export default (): AuthConfig => ({
     endpoint: process.env.MINIO_ENDPOINT ?? 'localhost',
     port: parseInt(process.env.MINIO_PORT ?? '9000', 10),
     useSsl: process.env.MINIO_USE_SSL === 'true',
+    // S3 region — needed by Hetzner Object Storage (fsn1 / nbg1 / hel1);
+    // blank for a local MinIO.
+    region: process.env.MINIO_REGION ?? '',
+    // false when the bucket is created out-of-band (Hetzner): the app's
+    // credentials then only need object read/write, not bucket admin.
+    autoCreateBucket: process.env.MINIO_AUTO_CREATE_BUCKET !== 'false',
+    keyPrefix: process.env.MINIO_KEY_PREFIX ?? '',
+    allowBucketRoot: process.env.MINIO_ALLOW_BUCKET_ROOT === 'true',
     accessKey: process.env.MINIO_ACCESS_KEY ?? '',
     secretKey: process.env.MINIO_SECRET_KEY ?? '',
     bucket: process.env.MINIO_BUCKET ?? 'fiam-kyc-documents',

@@ -6,6 +6,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { PostofficeConfig } from '../config/configuration';
 import { PushPayload, PushProvider } from './push-provider.interface';
+import { safeJson } from '@app/common';
 
 const ONESIGNAL_URL = 'https://api.onesignal.com/notifications';
 
@@ -56,14 +57,14 @@ export class OneSignalPushProvider implements PushProvider {
 
     if (!response.ok) {
       throw new Error(
-        `OneSignal push failed: ${response.status} ${JSON.stringify(body)}`,
+        `OneSignal push failed: ${response.status} ${safeJson(body)}`,
       );
     }
     // OneSignal answers 200 with no `id` and an `errors` entry when the user
     // has no subscribed device yet — nothing wrong, just nobody to notify.
     if (!body?.id) {
       this.logger.debug(
-        `OneSignal push to ${userId} reached no device: ${JSON.stringify(body?.errors)}`,
+        `OneSignal push to ${userId} reached no device: ${safeJson(body?.errors)}`,
       );
     }
   }

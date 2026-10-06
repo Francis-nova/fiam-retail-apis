@@ -1,11 +1,15 @@
 # The redeployable app stack: Postgres, Redis, RabbitMQ, MinIO, and the
-# three Nest services (auth, payment, postoffice), all sharing one built
+# four Nest services (auth, payment, postoffice, admin), all sharing one built
 # image (see ../Dockerfile) that's differentiated per service only by
 # `command:`.
 #
+# The staging staff console is a separate file (console-stack.yml); production's
+# console is hosted on Netlify and is not deployed here.
+#
 # Requires the `edge` overlay network from traefik-stack.yml to already
 # exist (auth/payment join it so Traefik can route to them; postoffice has
-# no public API — it's only reached over RabbitMQ — so it stays off `edge`).
+# no public API — it's only reached over RabbitMQ — so it stays off `edge`;
+# admin is the back-office API the staff console calls, so it joins `edge`).
 #
 # Deploy (from inside docker/ — `docker stack deploy` has no --env-file
 # flag AND, unlike `docker compose`, does not auto-load a `.env` file
@@ -19,6 +23,7 @@
 #   docker service update --image ghcr.io/francis-nova/fiam-retail-apis:staging fiam_auth
 #   docker service update --image ghcr.io/francis-nova/fiam-retail-apis:staging fiam_payment
 #   docker service update --image ghcr.io/francis-nova/fiam-retail-apis:staging fiam_postoffice
+#   docker service update --image ghcr.io/francis-nova/fiam-retail-apis:staging fiam_admin
 
 version: '3.8'
 
@@ -98,8 +103,13 @@ services:
     command: ["node", "dist/apps/auth/apps/auth/src/main.js"]
     environment:
       NODE_ENV: production
+      # Rate-limit counters (shared, survive restarts).
+      REDIS_URL: redis://redis:6379
       AUTH_PORT: 7001
-      AUTH_DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/fiam_auth
+      AUTH_DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@${POSTGRES_HOST:-postgres}:${POSTGRES_PORT:-5432}/fiam_auth
+      # TLS to a Postgres outside this stack (see libs/common pg-ssl.ts); off by default.
+      DB_SSL: ${DB_SSL:-false}
+      DB_SSL_CA: ${DB_SSL_CA:-}
       CORS_ORIGIN: ${CORS_ORIGIN:-*}
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
       JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-15m}
@@ -112,12 +122,21 @@ services:
       QOREID_LIVENESS_CLIENT_ID: ${QOREID_LIVENESS_CLIENT_ID:-}
       QOREID_LIVENESS_SECRET: ${QOREID_LIVENESS_SECRET:-}
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-}
-      MINIO_ENDPOINT: minio
-      MINIO_PORT: 9000
-      MINIO_USE_SSL: "false"
-      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
-      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
-      MINIO_BUCKET: ${MINIO_BUCKET:-fiam-kyc-documents}
+      # KYC document storage (any S3-compatible store). The variables are set
+      # in docker/.env - for the in-stack MinIO use endpoint=minio, port=9000,
+      # ssl=false and the MINIO_ROOT_* values as the keys; for Hetzner Object
+      # Storage see README "Object storage". Flat on purpose: this Docker's
+      # stack loader does not support nested ${A:-${B}} defaults.
+      MINIO_ENDPOINT: ${OBJECT_STORAGE_ENDPOINT:-minio}
+      MINIO_PORT: ${OBJECT_STORAGE_PORT:-9000}
+      MINIO_USE_SSL: ${OBJECT_STORAGE_USE_SSL:-false}
+      MINIO_REGION: ${OBJECT_STORAGE_REGION:-}
+      MINIO_AUTO_CREATE_BUCKET: ${OBJECT_STORAGE_AUTO_CREATE_BUCKET:-true}
+      MINIO_ACCESS_KEY: ${OBJECT_STORAGE_ACCESS_KEY:?set OBJECT_STORAGE_ACCESS_KEY in docker/.env}
+      MINIO_SECRET_KEY: ${OBJECT_STORAGE_SECRET_KEY:?set OBJECT_STORAGE_SECRET_KEY in docker/.env}
+      MINIO_BUCKET: ${OBJECT_STORAGE_BUCKET:-fiam-kyc-documents}
+      # Folder inside a shared bucket (blank = bucket root), e.g. fiam-staging/
+      MINIO_KEY_PREFIX: ${OBJECT_STORAGE_PREFIX:-}
       RABBITMQ_URL: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASSWORD}@rabbitmq:5672
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:7001/health"]
@@ -132,7 +151,7 @@ services:
       <<: *deploy-defaults
       labels:
         - traefik.enable=true
-        - traefik.http.routers.auth.rule=Host(`api.auth.staging.usefiam.com`) && !PathPrefix(`/internal`)
+        - traefik.http.routers.auth.rule=Host(`${AUTH_HOST:-api.auth.staging.usefiam.com}`) && !PathPrefix(`/internal`)
         - traefik.http.routers.auth.entrypoints=websecure
         - traefik.http.routers.auth.tls.certresolver=le
         - traefik.http.services.auth.loadbalancer.server.port=7001
@@ -143,7 +162,10 @@ services:
     environment:
       NODE_ENV: production
       PAYMENT_PORT: 7003
-      PAYMENT_DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/fiam_payment
+      PAYMENT_DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@${POSTGRES_HOST:-postgres}:${POSTGRES_PORT:-5432}/fiam_payment
+      # TLS to a Postgres outside this stack (see libs/common pg-ssl.ts); off by default.
+      DB_SSL: ${DB_SSL:-false}
+      DB_SSL_CA: ${DB_SSL_CA:-}
       CORS_ORIGIN: ${CORS_ORIGIN:-*}
       RABBITMQ_URL: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASSWORD}@rabbitmq:5672
       REDIS_URL: redis://redis:6379
@@ -153,7 +175,7 @@ services:
       VFD_WALLET_BASE_URL: ${VFD_WALLET_BASE_URL:-https://api-devapps.vfdbank.systems/vtech-wallet/api/v2/wallet2}
       VFD_CONSUMER_KEY: ${VFD_CONSUMER_KEY:-}
       VFD_CONSUMER_SECRET: ${VFD_CONSUMER_SECRET:-}
-      VFD_WEBHOOK_SECRET: ${VFD_WEBHOOK_SECRET:-}
+      VFD_WEBHOOK_AUTH_TOKEN: ${VFD_WEBHOOK_AUTH_TOKEN:-}
       VFD_BANK_CODE: ${VFD_BANK_CODE:-999999}
       VFD_WALLET_NAME: ${VFD_WALLET_NAME:-ADL}
       AUTH_INTERNAL_URL: http://auth:7001
@@ -171,7 +193,7 @@ services:
       <<: *deploy-defaults
       labels:
         - traefik.enable=true
-        - traefik.http.routers.payment.rule=Host(`api.payment.staging.usefiam.com`)
+        - traefik.http.routers.payment.rule=Host(`${PAYMENT_HOST:-api.payment.staging.usefiam.com}`) && !PathPrefix(`/internal`)
         - traefik.http.routers.payment.entrypoints=websecure
         - traefik.http.routers.payment.tls.certresolver=le
         - traefik.http.services.payment.loadbalancer.server.port=7003
@@ -206,6 +228,62 @@ services:
       <<: *deploy-defaults
     # No `edge` network / Traefik labels — postoffice has no REST API for
     # other services, it's only ever reached via the RabbitMQ queue.
+
+  admin:
+    image: *image
+    command: ["node", "dist/apps/admin/apps/admin/src/main.js"]
+    environment:
+      NODE_ENV: production
+      ADMIN_PORT: 7004
+      # Blank = no IP restriction. Set to the office/VPN egress IPs or CIDRs.
+      ADMIN_ALLOWED_IPS: ${ADMIN_ALLOWED_IPS:-}
+      # Encrypts staff TOTP secrets at rest (openssl rand -hex 32). Do not lose it.
+      ADMIN_TOTP_ENCRYPTION_KEY: ${ADMIN_TOTP_ENCRYPTION_KEY:?set ADMIN_TOTP_ENCRYPTION_KEY in docker/.env}
+      # true = every staff member must enrol in 2FA before they can sign in.
+      ADMIN_REQUIRE_2FA: ${ADMIN_REQUIRE_2FA:-false}
+      ADMIN_TOTP_ISSUER: ${ADMIN_TOTP_ISSUER:-Fiam Console}
+      # Staff alerts: emails super admins on sensitive actions via postoffice.
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASSWORD}@rabbitmq:5672
+      # Rate-limit counters (shared, survive restarts).
+      REDIS_URL: redis://redis:6379
+      # Own database, owned by a dedicated role (not the Postgres superuser).
+      ADMIN_DATABASE_URL: postgres://fiam_admin_app:${ADMIN_DB_PASSWORD:?set ADMIN_DB_PASSWORD in docker/.env}@${POSTGRES_HOST:-postgres}:${POSTGRES_PORT:-5432}/fiam_admin
+      # TLS to a Postgres outside this stack (see libs/common pg-ssl.ts); off by default.
+      DB_SSL: ${DB_SSL:-false}
+      DB_SSL_CA: ${DB_SSL_CA:-}
+      # Read-only, column-limited role into the other services' databases
+      # (see postgres/admin-roles.sql) — never the superuser.
+      AUTH_READONLY_DATABASE_URL: postgres://fiam_readonly:${READONLY_DB_PASSWORD:?set READONLY_DB_PASSWORD in docker/.env}@${POSTGRES_HOST:-postgres}:${POSTGRES_PORT:-5432}/fiam_auth
+      PAYMENT_READONLY_DATABASE_URL: postgres://fiam_readonly:${READONLY_DB_PASSWORD}@${POSTGRES_HOST:-postgres}:${POSTGRES_PORT:-5432}/fiam_payment
+      # Called from a browser, so CORS stays on: must be the console's exact origin.
+      CORS_ORIGIN: ${ADMIN_CORS_ORIGIN:?set ADMIN_CORS_ORIGIN (the console's origin) in docker/.env}
+      # Deliberately NOT JWT_ACCESS_SECRET: a staff token must never validate
+      # against the customer APIs, nor a customer token against this one.
+      ADMIN_JWT_ACCESS_SECRET: ${ADMIN_JWT_ACCESS_SECRET:?set ADMIN_JWT_ACCESS_SECRET in docker/.env}
+      ADMIN_JWT_ACCESS_TTL: ${ADMIN_JWT_ACCESS_TTL:-15m}
+      ADMIN_JWT_REFRESH_TTL_DAYS: ${ADMIN_JWT_REFRESH_TTL_DAYS:-7}
+      # Writes go through these services' /internal APIs over the private
+      # network; /internal is excluded from both public Traefik routers.
+      AUTH_INTERNAL_URL: http://auth:7001
+      PAYMENT_INTERNAL_URL: http://payment:7003
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:?set INTERNAL_API_KEY in docker/.env}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:7004/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    networks:
+      - internal
+      - edge
+    deploy:
+      <<: *deploy-defaults
+      labels:
+        - traefik.enable=true
+        - traefik.http.routers.admin.rule=Host(`${ADMIN_API_HOST:-api.admin.staging.usefiam.com}`)
+        - traefik.http.routers.admin.entrypoints=websecure
+        - traefik.http.routers.admin.tls.certresolver=le
+        - traefik.http.services.admin.loadbalancer.server.port=7004
 
 networks:
   internal:

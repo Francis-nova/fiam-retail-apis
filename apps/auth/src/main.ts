@@ -3,11 +3,19 @@ import { Logger, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
-import { HttpExceptionFilter } from '@app/common';
+import { NestExpressApplication } from '@nestjs/platform-express';
+import {
+  HttpExceptionFilter,
+  hardenHttp,
+  swaggerEnabled,
+  initErrorTracking,
+} from '@app/common';
 import { AuthConfig } from './config/configuration';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  initErrorTracking('auth');
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  hardenHttp(app);
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   app.useGlobalFilters(new HttpExceptionFilter());
 
@@ -23,22 +31,23 @@ async function bootstrap() {
     });
   }
 
-  const swaggerConfig = new DocumentBuilder()
-    .setTitle('Fiam Auth API')
-    .setDescription(
-      'Signup, sign-in, KYC/BVN, devices, and settings/security endpoints.',
-    )
-    .setVersion('1.0')
-    .addBearerAuth()
-    .build();
-  const document = SwaggerModule.createDocument(app, swaggerConfig);
-  SwaggerModule.setup('docs', app, document);
+  if (swaggerEnabled(configService.get('env', { infer: true }))) {
+    const swaggerConfig = new DocumentBuilder()
+      .setTitle('Fiam Auth API')
+      .setDescription(
+        'Signup, sign-in, KYC/BVN, devices, and settings/security endpoints.',
+      )
+      .setVersion('1.0')
+      .addBearerAuth()
+      .build();
+    const document = SwaggerModule.createDocument(app, swaggerConfig);
+    SwaggerModule.setup('docs', app, document);
+  }
 
   const port = configService.get('port', { infer: true });
   await app.listen(port, '0.0.0.0');
 
   const logger = new Logger('Bootstrap');
   logger.log(`Auth API running on port ${port}`);
-  logger.log(`Swagger docs available at ${await app.getUrl()}/docs`);
 }
 void bootstrap();

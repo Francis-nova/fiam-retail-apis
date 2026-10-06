@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { RateLimitModule } from '@app/common';
 import { ConfigModule } from '@nestjs/config';
 import configuration from './config/configuration';
 import { validate } from './config/env.validation';
@@ -10,10 +11,12 @@ import { OtpModule } from './otp/otp.module';
 import { SessionsModule } from './sessions/sessions.module';
 import { AuthModule } from './auth/auth.module';
 import { InternalModule } from './internal/internal.module';
+import { DeletionModule } from './deletion/deletion.module';
 import { HealthController } from './health/health.controller';
 
 @Module({
   imports: [
+    RateLimitModule.forRoot('auth'),
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: 'apps/auth/.env',
@@ -28,6 +31,7 @@ import { HealthController } from './health/health.controller';
     SessionsModule,
     AuthModule,
     InternalModule,
+    DeletionModule,
   ],
   controllers: [HealthController],
 })

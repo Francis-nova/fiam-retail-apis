@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { RateLimitModule } from '@app/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { BullModule } from '@nestjs/bullmq';
 import { AppController } from './app.controller';
@@ -12,9 +13,11 @@ import { TransactionsModule } from './transactions/transactions.module';
 import { BanksModule } from './banks/banks.module';
 import { BeneficiariesModule } from './beneficiaries/beneficiaries.module';
 import { PayoutsModule } from './payouts/payouts.module';
+import { InternalModule } from './internal/internal.module';
 
 @Module({
   imports: [
+    RateLimitModule.forRoot('payment'),
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: 'apps/payment/.env',
@@ -38,6 +41,7 @@ import { PayoutsModule } from './payouts/payouts.module';
     BanksModule,
     BeneficiariesModule,
     PayoutsModule,
+    InternalModule,
   ],
   controllers: [AppController],
 })

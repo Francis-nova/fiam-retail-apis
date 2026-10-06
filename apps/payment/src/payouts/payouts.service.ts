@@ -1,6 +1,7 @@
 import { randomInt } from 'crypto';
 import {
   BadRequestException,
+  ForbiddenException,
   Inject,
   Injectable,
   Logger,
@@ -10,8 +11,9 @@ import { ConfigService } from '@nestjs/config';
 import { InjectQueue } from '@nestjs/bullmq';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Queue } from 'bullmq';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
 import Decimal from 'decimal.js';
+import { PaymentProviderKey } from '../wallets/entities/address.entity';
 import { CurrencyCode } from '@app/common';
 import { PaymentConfig } from '../config/configuration';
 import { WalletsService } from '../wallets/wallets.service';
@@ -39,6 +41,8 @@ import {
 import { ResolveRecipientDto } from './dto/resolve-recipient.dto';
 import { InitiatePayoutDto } from './dto/initiate-payout.dto';
 import { calculateTransferFee } from './fee.util';
+import { PinVerifierService } from './pin-verifier.service';
+import type { TransferLimit } from './pin-verifier.service';
 
 @Injectable()
 export class PayoutsService {
@@ -58,6 +62,7 @@ export class PayoutsService {
     @InjectQueue(PAYOUT_STATUS_QUERY_QUEUE)
     private readonly queue: Queue<PayoutStatusQueryJobData>,
     private readonly configService: ConfigService<PaymentConfig, true>,
+    private readonly pinVerifier: PinVerifierService,
   ) {}
 
   private transferType(bankCode: string): ProviderTransferType {
@@ -114,6 +119,12 @@ export class PayoutsService {
     userId: string,
     dto: InitiatePayoutDto,
   ): Promise<Transaction> {
+    // First thing, before anything is looked up or reserved.
+    const { transferLimit } = await this.pinVerifier.assertValid(
+      userId,
+      dto.pin,
+    );
+
     const provider = this.registry.getProviderForCurrency(CurrencyCode.NGN);
     const { walletName } = this.configService.get('vfd', { infer: true });
 
@@ -189,6 +200,14 @@ export class PayoutsService {
         wallet.id,
         debit,
       );
+      // After the wallet row is locked, so two concurrent payouts can't both
+      // squeeze under the cap.
+      await this.assertWithinTransferLimit(
+        manager,
+        wallet.id,
+        amount,
+        transferLimit,
+      );
       return manager.save(
         Transaction,
         manager.create(Transaction, {
@@ -220,6 +239,154 @@ export class PayoutsService {
     });
 
     return this.applyTransferResult(transaction, result);
+  }
+
+  /**
+   * Asks the provider where a payout stands and applies the answer. Shared by
+   * the background re-query worker and the admin console's "re-query" action,
+   * so both behave identically. Safe to call repeatedly: a payout that already
+   * reached SUCCESSFUL/FAILED is left alone.
+   */
+  async syncPayoutStatus(
+    transactionId: string,
+  ): Promise<
+    | 'NOT_FOUND'
+    | 'ALREADY_FINAL'
+    | 'SUCCESSFUL'
+    | 'FAILED'
+    | 'HOLD'
+    | 'UNRESOLVED'
+  > {
+    const transaction = await this.transactionsRepo.findOneBy({
+      id: transactionId,
+    });
+    if (!transaction) return 'NOT_FOUND';
+    if (
+      transaction.status === TransactionStatus.SUCCESSFUL ||
+      transaction.status === TransactionStatus.FAILED
+    ) {
+      return 'ALREADY_FINAL';
+    }
+
+    const provider = this.registry.getProviderByKey(transaction.provider);
+    const result = await provider.queryTransferStatus(transaction.reference);
+
+    await this.transactionsRepo.update(transactionId, {
+      externalId: result.externalId ?? transaction.externalId,
+      providerStatusCode: result.providerStatusCode,
+      // Cast: same QueryDeepPartialEntity/jsonb workaround as
+      // TransactionsService.recordPayin.
+      rawPayload: (result.rawPayload ?? transaction.rawPayload) as never,
+    });
+
+    if (result.outcome === 'SUCCESSFUL') {
+      await this.transactionsRepo.update(transactionId, {
+        status: TransactionStatus.SUCCESSFUL,
+        verifiedAt: new Date(),
+      });
+      void this.notifications.notifyTransaction(
+        transaction,
+        'PAYOUT_SUCCESSFUL',
+      );
+      return 'SUCCESSFUL';
+    }
+    if (result.outcome === 'FAILED') {
+      await this.reverseFailedPayout(transactionId);
+      return 'FAILED';
+    }
+    if (result.outcome === 'HOLD') {
+      // Terminal for polling purposes: the provider told us not to reverse,
+      // so this waits for manual review.
+      this.holdForReview(transaction, result.providerStatusCode);
+      return 'HOLD';
+    }
+    return 'UNRESOLVED';
+  }
+
+  // Payout amount already sent (or in flight) inside the limit window. Failed
+  // payouts are refunded, so they don't count against the cap. The limit is
+  // outflow-only — inflows are never restricted by it.
+  private async outflowSince(
+    manager: EntityManager,
+    walletId: string,
+    since: Date,
+  ): Promise<Decimal> {
+    const row = await manager
+      .createQueryBuilder(Transaction, 't')
+      .select('COALESCE(SUM(t.amount), 0)', 'total')
+      .where('t.walletId = :walletId', { walletId })
+      .andWhere('t.type = :type', { type: TransactionType.DEBIT })
+      // Payouts only: a staff-posted adjustment (provider MANUAL) is not the
+      // customer sending money, so it must not use up their cap.
+      .andWhere('t.provider <> :manual', { manual: PaymentProviderKey.MANUAL })
+      .andWhere('t.status IN (:...statuses)', {
+        statuses: [
+          TransactionStatus.PENDING,
+          TransactionStatus.PROCESSING,
+          TransactionStatus.SUCCESSFUL,
+        ],
+      })
+      .andWhere('t.createdAt >= :since', { since })
+      .getRawOne<{ total: string }>();
+    return new Decimal(row?.total ?? 0);
+  }
+
+  // CBN circular (12 Mar 2026): after activating the app on a new device an
+  // existing customer may send at most N20,000 in total during the first 24
+  // hours. The window and cap come from auth (which knows about the device).
+  private async assertWithinTransferLimit(
+    manager: EntityManager,
+    walletId: string,
+    amount: Decimal,
+    limit: TransferLimit | null,
+  ): Promise<void> {
+    if (!limit) return;
+    const used = await this.outflowSince(
+      manager,
+      walletId,
+      new Date(limit.since),
+    );
+    const remaining = Decimal.max(new Decimal(limit.amount).minus(used), 0);
+    if (amount.greaterThan(remaining)) {
+      const until = new Date(limit.until).toLocaleString('en-NG', {
+        timeZone: 'Africa/Lagos',
+        dateStyle: 'medium',
+        timeStyle: 'short',
+      });
+      throw new ForbiddenException({
+        statusCode: 403,
+        code: 'NEW_DEVICE_LIMIT',
+        message: `For your security, transfers are limited to ₦${new Decimal(limit.amount).toNumber().toLocaleString('en-NG')} in total for 24 hours after signing in on a new device. You can send up to ₦${remaining.toNumber().toLocaleString('en-NG', { maximumFractionDigits: 2 })} more until ${until}.`,
+        limit: limit.amount,
+        remaining: remaining.toFixed(2),
+        until: limit.until,
+      });
+    }
+  }
+
+  // For the transfer screen: is a limit active, and how much is left of it.
+  async transferLimitStatus(userId: string) {
+    const limit = await this.pinVerifier.getTransferLimit(userId);
+    if (!limit) return { restricted: false as const };
+    const wallet = await this.walletsService.findByUserAndCurrency(
+      userId,
+      CurrencyCode.NGN,
+    );
+    const used = wallet
+      ? await this.outflowSince(
+          this.dataSource.manager,
+          wallet.id,
+          new Date(limit.since),
+        )
+      : new Decimal(0);
+    const remaining = Decimal.max(new Decimal(limit.amount).minus(used), 0);
+    return {
+      restricted: true as const,
+      limit: limit.amount,
+      used: used.toFixed(2),
+      remaining: remaining.toFixed(2),
+      until: limit.until,
+    };
   }
 
   // "ADL007884944": wallet-name prefix (which VFD requires on every transfer

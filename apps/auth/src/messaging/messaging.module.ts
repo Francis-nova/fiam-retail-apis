@@ -9,6 +9,7 @@ import { AuthConfig } from '../config/configuration';
 import { PaymentProvisioningPublisher } from './payment-provisioning.publisher';
 import { PAYMENT_PROVISIONING_CLIENT } from './payment-provisioning-client.token';
 import { NotificationPublisher } from './notification.publisher';
+import { SecurityAlertsService } from './security-alerts.service';
 import { POSTOFFICE_NOTIFICATION_CLIENT } from './postoffice-notification-client.token';
 
 @Module({
@@ -56,7 +57,15 @@ import { POSTOFFICE_NOTIFICATION_CLIENT } from './postoffice-notification-client
       },
     ]),
   ],
-  providers: [PaymentProvisioningPublisher, NotificationPublisher],
-  exports: [PaymentProvisioningPublisher, NotificationPublisher],
+  providers: [
+    PaymentProvisioningPublisher,
+    NotificationPublisher,
+    SecurityAlertsService,
+  ],
+  exports: [
+    PaymentProvisioningPublisher,
+    NotificationPublisher,
+    SecurityAlertsService,
+  ],
 })
 export class MessagingModule {}

@@ -10,6 +10,8 @@ interface EnvVars {
   JWT_ACCESS_TTL: string;
   JWT_REFRESH_SECRET: string;
   JWT_REFRESH_TTL: string;
+  NEW_DEVICE_LIMIT_NGN: string;
+  NEW_DEVICE_LIMIT_HOURS: number;
   OTP_TTL_SECONDS: number;
   OTP_LENGTH: number;
   OTP_MAX_ATTEMPTS: number;
@@ -27,6 +29,10 @@ interface EnvVars {
   MINIO_ACCESS_KEY: string;
   MINIO_SECRET_KEY: string;
   MINIO_BUCKET: string;
+  MINIO_REGION: string;
+  MINIO_AUTO_CREATE_BUCKET: 'true' | 'false';
+  MINIO_KEY_PREFIX: string;
+  MINIO_ALLOW_BUCKET_ROOT: 'true' | 'false';
   RABBITMQ_URL: string;
 }
 
@@ -35,6 +41,9 @@ export const envSchema = Joi.object<EnvVars>({
     .valid('development', 'test', 'production')
     .default('development'),
   AUTH_PORT: Joi.number().default(7001),
+  // CBN caps this at 20,000 / 24h — lower is allowed, higher is not.
+  NEW_DEVICE_LIMIT_NGN: Joi.number().integer().min(0).max(20000).default(20000),
+  NEW_DEVICE_LIMIT_HOURS: Joi.number().integer().min(24).default(24),
   AUTH_DATABASE_URL: Joi.string().uri().required(),
   JWT_ACCESS_SECRET: Joi.string().min(32).required(),
   JWT_ACCESS_TTL: Joi.string().default('15m'),
@@ -64,6 +73,15 @@ export const envSchema = Joi.object<EnvVars>({
   MINIO_ACCESS_KEY: Joi.string().allow('').default(''),
   MINIO_SECRET_KEY: Joi.string().allow('').default(''),
   MINIO_BUCKET: Joi.string().default('fiam-kyc-documents'),
+  // Any S3-compatible store works (Hetzner Object Storage in staging/prod).
+  MINIO_REGION: Joi.string().allow('').default(''),
+  // Optional folder inside a shared bucket (letters, digits, - _ . /).
+  MINIO_KEY_PREFIX: Joi.string()
+    .pattern(/^[A-Za-z0-9._/-]*$/)
+    .allow('')
+    .default(''),
+  MINIO_ALLOW_BUCKET_ROOT: Joi.string().valid('true', 'false').default('false'),
+  MINIO_AUTO_CREATE_BUCKET: Joi.string().valid('true', 'false').default('true'),
   // Message bus to apps/payment — publishing the account-provisioning
   // request. Default matches the local Homebrew RabbitMQ instance.
   RABBITMQ_URL: Joi.string()

@@ -1,12 +1,14 @@
 # Staging deployment (Hetzner, Docker Swarm)
 
-Three Nest services (`auth`, `payment`, `postoffice`) built from one shared
+Four Nest services (`auth`, `payment`, `postoffice`, `admin`) built from one shared
 image (`../Dockerfile`), deployed as a Docker Swarm stack alongside
 Postgres, Redis, RabbitMQ, and MinIO. Traefik sits in front and terminates
-TLS for the two public services:
+TLS for the three public services:
 
 - `auth` → https://api.auth.staging.usefiam.com
 - `payment` → https://api.payment.staging.usefiam.com
+- `admin` → https://api.admin.staging.usefiam.com (the staff console's API; the
+  console itself is a static site on Vercel)
 - `postoffice` has no public route — it's only reached over RabbitMQ.
 
 CI (`.github/workflows/ci.yml`) builds and pushes the image to
@@ -135,6 +137,354 @@ is automated for `staging`** by the `deploy-staging` job in the same workflow
    specific to staging — worth fixing properly (auto-declare the DLX on
    boot) at some point rather than repeating this by hand per environment.
 
+## Admin console API (one-time setup)
+
+`admin` is the back-office API for the staff console. It needs its own
+database and two dedicated Postgres roles so the container never holds the
+Postgres superuser password (`postgres/admin-roles.sql` explains exactly what
+each role may do). Do this **after** a CI deploy has applied the auth and
+payment migrations (the roles script refuses to run against a missing table).
+
+1. **DNS** — `api.admin.staging.usefiam.com` → this box (needed before
+   Let's Encrypt can issue the certificate).
+
+2. **Keep `/internal` off the public routers.** Payment's router must exclude
+   it (auth's already does) — `stack.yml` has this; if the stack hasn't been
+   redeployed yet, apply it live first:
+   ```
+   docker service update --label-add \
+     'traefik.http.routers.payment.rule=Host(`api.payment.staging.usefiam.com`) && !PathPrefix(`/internal`)' \
+     fiam_payment
+   ```
+
+3. **Secrets** — append to `docker/.env` (hex values only: they go into
+   connection URLs). `INTERNAL_API_KEY` must already be set.
+   ```
+   ADMIN_DB_PASSWORD=$(openssl rand -hex 24)
+   READONLY_DB_PASSWORD=$(openssl rand -hex 24)
+   ADMIN_JWT_ACCESS_SECRET=$(openssl rand -hex 32)
+   ADMIN_JWT_ACCESS_TTL=15m
+   ADMIN_JWT_REFRESH_TTL_DAYS=7
+   ADMIN_CORS_ORIGIN=https://<the console's Vercel origin, no trailing slash>
+   ```
+
+4. **Roles and database** (idempotent — re-run it whenever auth/payment gain
+   columns the admin API reads, since grants are column-level):
+   ```
+   cd docker && set -a && . ./.env && set +a
+   docker exec -i "$(docker ps -q -f name=fiam_postgres)" \
+     psql -U "$POSTGRES_USER" -v ON_ERROR_STOP=1 \
+       -v admin_pw="$ADMIN_DB_PASSWORD" -v ro_pw="$READONLY_DB_PASSWORD" \
+     < postgres/admin-roles.sql
+   ```
+
+5. **Create the service** (also refreshes the Traefik labels):
+   ```
+   cd docker && set -a && . ./.env && set +a && docker stack deploy -c stack.yml fiam
+   ```
+
+6. **Migrate and seed.** Same one-shot-job technique CI uses (CI skips admin
+   until `fiam_admin` exists, then migrates it on every deploy). The seed
+   prints the first super admin's one-time temporary password in the job log —
+   read it once, then remove the job:
+   ```
+   IMG=$(docker service inspect fiam_admin --format '{{.Spec.TaskTemplate.ContainerSpec.Image}}' | cut -d@ -f1)
+   DB=$(docker service inspect fiam_admin --format '{{range .Spec.TaskTemplate.ContainerSpec.Env}}{{println .}}{{end}}' | grep '^ADMIN_DATABASE_URL=' | cut -d= -f2-)
+
+   docker service create --detach=false --name migrate-admin --mode replicated-job \
+     --network fiam_internal --restart-condition none --env ADMIN_DATABASE_URL="$DB" \
+     "$IMG" node node_modules/typeorm/cli.js migration:run \
+     -d dist/apps/admin/apps/admin/src/database/data-source.js
+   docker service logs migrate-admin --no-trunc | tail -5; docker service rm migrate-admin
+
+   docker service create --detach=false --name seed-admin --mode replicated-job \
+     --network fiam_internal --restart-condition none --env ADMIN_DATABASE_URL="$DB" \
+     --env SEED_EMAIL=you@fiam.ng --env SEED_NAME="Your Name" \
+     "$IMG" node dist/apps/admin/apps/admin/src/database/seed-super-admin.js
+   docker service logs seed-admin --no-trunc | grep -i "temporary password"; docker service rm seed-admin
+   ```
+
+7. **Check**: `curl https://api.admin.staging.usefiam.com/health` → `{"status":"ok"}`.
+
+**Console on Vercel.** Import the `fiam-console` repo, set the build env var
+`VITE_API_URL=https://api.admin.staging.usefiam.com`, deploy. `vercel.json`
+in that repo provides the SPA routing and security headers (strict CSP whose
+`connect-src` allows only that API). Only the production domain can call the
+API — Vercel *preview* URLs have different origins and will be blocked by
+CORS unless added to `ADMIN_CORS_ORIGIN` (comma-separated).
+
+## Admin console hardening
+
+**Two-factor sign-in (TOTP).** `ADMIN_TOTP_ENCRYPTION_KEY` (64 hex chars,
+`openssl rand -hex 32`) is required: it encrypts every staff authenticator
+secret at rest. **Keep a copy outside the server** — if it is lost every
+enrolled authenticator becomes unreadable and each staff member must be reset
+(super admin → Staff → *Reset 2FA*) and re-enrol. Rollout:
+
+1. Deploy with `ADMIN_REQUIRE_2FA=false`; each person enrols from the console
+   (*Security* link, bottom-left) and saves their recovery codes.
+2. Once everyone is enrolled set `ADMIN_REQUIRE_2FA=true`
+   (`docker service update --env-add ADMIN_REQUIRE_2FA=true fiam_admin`, and in
+   `docker/.env`). From then on anyone who isn't enrolled is walked through
+   enrolment at their next sign-in, and 2FA can't be turned off.
+3. Lost phone + lost recovery codes: a super admin uses *Reset 2FA* on the
+   person's page. Lost the *only* super admin's device: run the seed script
+   for a new super admin (see "Migrate and seed" above) and reset the old one.
+
+**IP allowlist.** `ADMIN_ALLOWED_IPS` is a comma-separated list of IPs/CIDRs
+(`203.0.113.7, 198.51.100.0/24`). Blank/unset = **not enforced**. When set,
+every request from elsewhere gets `403` (except `/health`). It reads the
+client address Traefik forwards (`trust proxy` = 1 hop), so it only works with
+Traefik directly in front. A malformed entry fails the boot on purpose.
+Set it with `docker service update --env-add ADMIN_ALLOWED_IPS=... fiam_admin`
+(and in `docker/.env`); clear it with `--env-rm`. Note this restricts the
+*API*, i.e. the staff's browsers — it must contain the office/VPN egress IPs
+or nobody can sign in.
+
+**Staff alerts.** With `RABBITMQ_URL` set on `fiam_admin` (it is in
+`stack.yml`), every active super admin is emailed when someone creates,
+changes, resets or deletes a staff account, a staff account locks, 2FA is
+turned off, a manual posting is approved/fails, or a customer account is
+closed (`ALERT_ACTIONS` in `apps/admin/src/audit/alerts.service.ts`).
+
+**Audit log.** `audit_logs` is append-only (database triggers reject
+`UPDATE`/`DELETE`/`TRUNCATE`). Combine with off-box backups below.
+
+**Idle sign-out.** The console signs staff out after 30 idle minutes
+(`VITE_IDLE_MINUTES` at build time; `0` disables).
+
+**Read-only grants.** CI re-runs `postgres/admin-roles.sql` on every deploy so
+columns added by new migrations are visible to the admin API. If you ever run
+a migration by hand, re-run it too (step 4 above).
+
+## Backups
+
+`backup/backup.sh` dumps `fiam_auth`, `fiam_payment` and `fiam_admin`
+(`pg_dump -Fc`), the database roles, and the MinIO volume (KYC documents) into
+`/var/backups/fiam/<UTC timestamp>/` with a `SHA256SUMS` file, and prunes
+backups older than `BACKUP_KEEP_DAYS` (default 14). `backup/restore-check.sh`
+restores the newest backup into throwaway databases and counts the rows, so
+you *know* it works — run it after setting up and after any schema change.
+
+```
+# nightly at 02:00 UTC (/etc/cron.d/fiam-backup)
+0 2 * * * root set -a; . /opt/fiam/apis/docker/.env; set +a; /opt/fiam/apis/docker/backup/backup.sh >> /var/log/fiam-backup.log 2>&1
+```
+
+**A backup on the same disk is not disaster recovery.** Set
+`BACKUP_RCLONE_REMOTE` (e.g. `s3:fiam-backups/staging`, after `rclone config`)
+so each run is also copied off the server. Also store `docker/.env` (it holds
+`ADMIN_TOTP_ENCRYPTION_KEY` and every secret) somewhere safe — a restored
+database is useless without them.
+
+## Object storage (KYC documents)
+
+Documents are stored in any S3-compatible bucket; staging started on the
+in-stack MinIO and moves to **Hetzner Object Storage**. The app needs only
+object read/write/delete — create the bucket in the Hetzner console (private,
+and **enable object versioning**) and use a key that is limited to it.
+
+Settings in `docker/.env` (the stack reads these, flat — nested `${A:-${B}}`
+defaults are not supported by this Docker's stack loader):
+
+```
+OBJECT_STORAGE_ENDPOINT=fsn1.your-objectstorage.com   # no scheme; "minio" = the in-stack MinIO
+OBJECT_STORAGE_PORT=443
+OBJECT_STORAGE_USE_SSL=true
+OBJECT_STORAGE_REGION=fsn1                            # fsn1 / nbg1 / hel1; blank for MinIO
+OBJECT_STORAGE_AUTO_CREATE_BUCKET=false               # bucket made in the Hetzner console
+OBJECT_STORAGE_ACCESS_KEY=...
+OBJECT_STORAGE_SECRET_KEY=...
+OBJECT_STORAGE_BUCKET=fiam-kyc-staging
+OBJECT_STORAGE_PREFIX=                                # optional folder in a SHARED bucket, e.g. fiam-staging/
+```
+
+Staging uses the shared bucket `awuya-digital` with the folder `fiam-staging/`
+(documents in `fiam-staging/kyc/`, encrypted backups in `fiam-staging/backups/`).
+The prefix is applied by the storage layer only, so database keys stay
+prefix-free.
+
+**Decision: staging and production share this one bucket**, separated only by
+folder — `fiam-staging/` and `fiam-production/` (same layout under each:
+`kyc/`, `backups/`). Consequences to keep in mind:
+- Folders are a naming convention, not a security boundary: any service holding
+  the key can read or delete *both* environments. A mis-set `OBJECT_STORAGE_PREFIX`
+  on staging is therefore a production incident. Production's value must be
+  exactly `fiam-production/`, staging's exactly `fiam-staging/`; never blank.
+- Use a **different `BACKUP_ENCRYPTION_PASSPHRASE` per environment**, so a leaked
+  staging passphrase can't open production backups.
+- Turn on **bucket versioning** (Hetzner console) before production holds real
+  customer documents; it is the only protection against an overwrite/delete.
+- If Hetzner ever allows separate keys per environment, switch to them.
+
+**Cut-over (no downtime, nothing deleted from MinIO):**
+
+1. Copy and verify. This runs the app image as a one-shot job on the internal
+   network (MinIO isn't reachable from outside), is idempotent, and ends with a
+   "VERIFIED" line or a non-zero exit:
+   ```
+   IMG=$(docker service inspect fiam_auth --format '{{.Spec.TaskTemplate.ContainerSpec.Image}}' | cut -d@ -f1)
+   set -a; . docker/.env; set +a
+   # `timeout`: Swarm waits forever on a job that *fails*, so cap it.
+   timeout 600 docker service create --detach=false --name migrate-storage --mode replicated-job \
+     --network fiam_internal --restart-condition none \
+     --env SRC_ENDPOINT=minio --env SRC_PORT=9000 --env SRC_USE_SSL=false \
+     --env SRC_ACCESS_KEY="$MINIO_ROOT_USER" --env SRC_SECRET_KEY="$MINIO_ROOT_PASSWORD" \
+     --env SRC_BUCKET=fiam-kyc-documents \
+     --env DST_ENDPOINT="$HETZNER_ENDPOINT" --env DST_PORT=443 --env DST_USE_SSL=true \
+     --env DST_REGION="$HETZNER_REGION" --env DST_ACCESS_KEY="$HETZNER_KEY" \
+     --env DST_SECRET_KEY="$HETZNER_SECRET" --env DST_BUCKET="$HETZNER_BUCKET" \
+     --env DST_PREFIX="$HETZNER_PREFIX" \
+     "$IMG" node dist/apps/auth/apps/auth/src/storage/migrate-storage.js
+   docker service logs migrate-storage --no-trunc | tail; docker service rm migrate-storage
+   ```
+2. Point auth at the new store: set the `OBJECT_STORAGE_*` values above in
+   `docker/.env`, then `docker service update --env-add ... fiam_auth` for each
+   `MINIO_*` variable (or redeploy the stack).
+3. Open a KYC document in the console to confirm, then re-run step 1 once more
+   (it copies anything uploaded during the window).
+4. Keep the MinIO volume for a while as a fallback; remove the service later.
+
+## Off-box backups (Hetzner)
+
+`rclone` is configured purely from environment variables (no config file).
+Add to `docker/.env` (use a **different bucket** from the KYC documents):
+
+```
+RCLONE_CONFIG_HETZNER_TYPE=s3
+RCLONE_CONFIG_HETZNER_PROVIDER=Other
+RCLONE_CONFIG_HETZNER_ACCESS_KEY_ID=...
+RCLONE_CONFIG_HETZNER_SECRET_ACCESS_KEY=...
+RCLONE_CONFIG_HETZNER_ENDPOINT=https://fsn1.your-objectstorage.com
+RCLONE_CONFIG_HETZNER_REGION=fsn1
+RCLONE_CONFIG_HETZNER_NO_CHECK_BUCKET=true
+BACKUP_RCLONE_REMOTE=hetzner:fiam-backups/staging
+BACKUP_ENCRYPTION_PASSPHRASE=<long random; store it somewhere other than this server>
+```
+
+The script **refuses to upload without the passphrase** and encrypts every file
+(AES-256) first. To restore from Hetzner: `rclone copy hetzner:fiam-backups/staging/<stamp> ./enc`,
+`BACKUP_ENCRYPTION_PASSPHRASE=... backup/decrypt-backup.sh ./enc ./plain`, then
+`pg_restore -d <db> ./plain/<db>.dump`. Without the passphrase the backups
+cannot be read — keep a copy of it away from the server.
+
+## Reconciliation and stuck money (console)
+
+*Reconciliation* (Finance/Compliance) compares what we owe customers (sum of
+wallets) with the provider's reported pool balance and lists exceptions. On a
+payout stuck in PENDING/PROCESSING a Finance user can **Re-query with provider**
+(only a definite *failed* answer refunds; anything unclear changes nothing). An
+**UNMATCHED** deposit can be **assigned** to a customer: Finance requests it, a
+different Compliance user approves it on the Postings page (maker-checker), and
+the same transaction row becomes that customer's credit — it is never counted
+twice. *Transactions → Export CSV* (Finance) and *Audit log → Export CSV*
+(Compliance) are themselves audited; spreadsheet formulas in exported text are
+neutralised. Error tracking (Sentry) is off until `SENTRY_DSN` is set on the
+API services (and `VITE_SENTRY_DSN` + `SENTRY_ORIGIN` for the console); request
+bodies, headers and cookies are always stripped.
+
+## Production checklist (admin console)
+
+Nothing below exists yet; staging values are the only ones in the repo.
+
+- [ ] Separate production stack: own Postgres, Redis and RabbitMQ and
+      **fresh secrets** (never reuse staging's `INTERNAL_API_KEY`, JWT secrets,
+      `ADMIN_TOTP_ENCRYPTION_KEY`, DB passwords, backup passphrase).
+- [ ] Object storage: the shared Hetzner bucket with `OBJECT_STORAGE_PREFIX=fiam-production/`
+      (no MinIO), `BACKUP_RCLONE_REMOTE=hetzner:awuya-digital/fiam-production/backups`,
+      versioning on. Double-check the prefix on both environments.
+- [ ] DNS + TLS for the console and API hostnames.
+- [ ] Build the console with `VITE_API_URL=<prod admin API origin>` and run it
+      with `API_ORIGIN=<same origin>` (the CSP follows it — no code change).
+- [ ] `ADMIN_CORS_ORIGIN` = the console's exact production origin.
+- [ ] `ADMIN_REQUIRE_2FA=true`, `ADMIN_ALLOWED_IPS` set to the office/VPN.
+- [ ] At least **two** super admins, each with 2FA and saved recovery codes.
+- [ ] Backups scheduled, copied off-box, and a restore check passed.
+- [ ] Error tracking + uptime monitoring on `/health` of every service.
+- [ ] Run `postgres/admin-roles.sql` after the auth/payment migrations.
+
+## Production server
+
+Separate box, separate stack, **fresh secrets** (nothing copied from staging).
+Production tracks the `main` branch (`:main` image); staging tracks `staging`.
+Hostnames: `api.auth.` / `api.payment.` / `api.admin.usefiam.com`; the console is
+hosted on **Netlify** at `console.internal.usefiam.com` (not part of this stack).
+`stack.yml` defaults are staging's; production overrides them from `docker/.env`
+(`AUTH_HOST`, `PAYMENT_HOST`, `ADMIN_API_HOST`) — same file, no fork. The
+staging console service moved to `console-stack.yml`.
+
+**One-time setup (in order):**
+
+1. **DNS** — A records for the three API hostnames → the new box's IP (needed
+   before Let's Encrypt can issue certificates); `console.internal` → Netlify.
+2. **Bootstrap the OS** as root: Docker, Swarm, `edge` network, firewall
+   (22/80/443 only), fail2ban, auto security patches, log rotation, a `deploy`
+   user. `DEPLOY_PUBKEY` is the *CI* public key (generate a new keypair for
+   production — never reuse staging's):
+   ```
+   DEPLOY_PUBKEY="ssh-ed25519 AAAA... fiam-ci-production" bash docker/production/bootstrap.sh
+   ```
+   Then, **in a second terminal while the first stays open**, confirm
+   `ssh deploy@<ip>` works with a key, and only then disable password and root
+   SSH login (`PasswordAuthentication no`, `PermitRootLogin no` in
+   `/etc/ssh/sshd_config.d/99-hardening.conf`, `systemctl reload ssh`).
+3. **GHCR** — the package is public (staging relies on this); if you make it
+   private, `docker login ghcr.io` as `deploy`.
+4. **Code + secrets** as `deploy`:
+   ```
+   git clone https://github.com/Francis-nova/fiam-retail-apis /opt/fiam/apis
+   cd /opt/fiam/apis && git checkout main
+   cp docker/.env.production.example docker/.env && chmod 600 docker/.env
+   # fill it in, then:
+   bash docker/production/preflight.sh      # must print "preflight passed"
+   ```
+   Keep an offline copy of `.env` (password manager) — losing
+   `ADMIN_TOTP_ENCRYPTION_KEY` or `BACKUP_ENCRYPTION_PASSPHRASE` is unrecoverable.
+5. **Traefik, then the stack** — steps 5–6 of "One-time server setup" above,
+   unchanged (Traefik only needs `ACME_EMAIL` from the production `.env`).
+6. **Migrations** (step 7 above), **RabbitMQ DLX** (step 8 above), then
+   `postgres/admin-roles.sql` and the first super admin ("Admin console API").
+7. **Console (Netlify)**: import the `fiam-console` repo (`netlify.toml` has the
+   build, SPA redirect and CSP), set build env `VITE_API_URL=https://api.admin.usefiam.com`,
+   attach the custom domain `console.internal.usefiam.com`.
+8. **Backups**: install the cron from "Backups" and run
+   `backup/restore-check.sh` once. Turn on bucket versioning.
+9. **VFD**: give VFD the production webhook URL
+   (`https://api.payment.usefiam.com/...`) and the production
+   `VFD_WEBHOOK_AUTH_TOKEN`; fund/verify with a small real transaction before
+   announcing.
+
+**External Postgres.** Production does not run the in-stack Postgres (or MinIO):
+deploy with the overlay, `bash production/deploy-stack.sh`
+(overlay `production/stack.production.yml`), which scales both to 0. `.env` sets `POSTGRES_HOST/PORT`, `DB_SSL=true` and the
+pinned server certificate (`DB_SSL_CA_HOST`, mounted into auth/payment/admin).
+TypeORM ignores `?sslmode=` in URLs, so TLS is wired through
+`libs/common/src/database/pg-ssl.ts`. The Postgres password may contain special characters: single-quote it in `.env`
+and deploy with `production/deploy-stack.sh`, which URL-encodes it.
+Restrict the database host's firewall (port 5432) to this server's IP. Backups
+and `admin-roles.sql` reach it through a one-shot `postgres:17-alpine` client
+container (`backup/pg.sh`); `restore-check.sh` creates throwaway `restorecheck_*`
+databases on that server, so the user needs CREATEDB.
+Production does **not** use the least-privilege admin roles (`admin-roles.sql`): the
+admin service connects as the same DB user as auth/payment (overlay env), and CI
+skips the grants refresh. Trade-off accepted: a compromised admin service could read
+credential-hash columns and write to the other databases. `admin-roles.sql` stays
+in the repo (staging uses it) if this is tightened later. The database server
+is Postgres 18, so the client image is `postgres:18-alpine`.
+
+**CI/CD (already in `ci.yml`):** a push to `main` runs lint → build → image →
+`deploy-production` (migrate → refresh admin grants → roll services → smoke test
+the three public `/health` URLs). In GitHub → Settings → Environments, create
+`production` with **required reviewers** (this is the manual approval gate) and
+the secrets `PRODUCTION_SSH_HOST`, `PRODUCTION_SSH_USER` (`deploy`),
+`PRODUCTION_SSH_KEY`, `PRODUCTION_KNOWN_HOSTS` (`ssh-keyscan -t ed25519 <ip>`;
+verify the fingerprint against the Hetzner console). Restrict the `main` branch
+(PR + passing checks) so only reviewed code can reach this job.
+
+**Rollback:** `docker service update --rollback fiam_<svc>`, or redeploy a
+previous commit's `:<sha>` image. Migrations are not auto-reverted — make them
+backward-compatible with the previous release.
+
 ## Deploying a new build
 
 Once CI has pushed a new image for a commit on `staging`:
@@ -143,6 +493,7 @@ Once CI has pushed a new image for a commit on `staging`:
 docker service update --image ghcr.io/francis-nova/fiam-retail-apis:staging fiam_auth
 docker service update --image ghcr.io/francis-nova/fiam-retail-apis:staging fiam_payment
 docker service update --image ghcr.io/francis-nova/fiam-retail-apis:staging fiam_postoffice
+docker service update --image ghcr.io/francis-nova/fiam-retail-apis:staging fiam_admin
 ```
 
 `update_config.order: start-first` in `stack.yml` means the new container

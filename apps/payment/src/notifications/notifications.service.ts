@@ -13,12 +13,19 @@ import { WalletsService } from '../wallets/wallets.service';
 import { Transaction } from '../transactions/entities/transaction.entity';
 
 export type TransactionNotificationEvent =
-  'CREDIT_RECEIVED' | 'PAYOUT_SUCCESSFUL' | 'PAYOUT_FAILED';
+  | 'CREDIT_RECEIVED'
+  | 'PAYOUT_SUCCESSFUL'
+  | 'PAYOUT_FAILED'
+  // Staff-posted wallet adjustments (admin console manual postings).
+  | 'ACCOUNT_CREDITED'
+  | 'ACCOUNT_DEBITED';
 
 const TEMPLATE_BY_EVENT: Record<TransactionNotificationEvent, PushTemplate> = {
   CREDIT_RECEIVED: PushTemplate.MONEY_RECEIVED,
   PAYOUT_SUCCESSFUL: PushTemplate.PAYOUT_SUCCESSFUL,
   PAYOUT_FAILED: PushTemplate.PAYOUT_FAILED,
+  ACCOUNT_CREDITED: PushTemplate.ACCOUNT_CREDITED,
+  ACCOUNT_DEBITED: PushTemplate.ACCOUNT_DEBITED,
 };
 
 // Postoffice's email template for a money-in / money-out receipt. Only the
@@ -29,7 +36,16 @@ const RECEIPT_DIRECTION: Partial<
 > = {
   CREDIT_RECEIVED: 'credit',
   PAYOUT_SUCCESSFUL: 'debit',
+  ACCOUNT_CREDITED: 'credit',
+  ACCOUNT_DEBITED: 'debit',
 };
+
+// Adjustments aren't transfers: the receipt shows the description instead of
+// a sender/recipient, and uses adjustment wording.
+const ADJUSTMENT_EVENTS = new Set<TransactionNotificationEvent>([
+  'ACCOUNT_CREDITED',
+  'ACCOUNT_DEBITED',
+]);
 
 const AUTH_LOOKUP_TIMEOUT_MS = 5_000;
 
@@ -121,8 +137,9 @@ export class NotificationsService {
       const contact = await this.lookupContact(userId);
       if (!contact) return;
 
+      const adjustment = ADJUSTMENT_EVENTS.has(event);
       const counterparty =
-        direction === 'credit'
+        direction === 'credit' || adjustment
           ? (transaction.narration ?? 'Bank transfer')
           : (transaction.beneficiary?.accountName ??
             transaction.accountNumber ??
@@ -143,6 +160,7 @@ export class NotificationsService {
           counterparty,
           reference: transaction.reference ?? transaction.id,
           status: 'Successful',
+          ...(adjustment ? { adjustment: 'true' } : {}),
           occurredAt: lagosDate(new Date(occurred)),
         },
         requestedAt: new Date().toISOString(),

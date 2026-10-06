@@ -77,6 +77,8 @@ jobs:
       group: deploy-staging
       cancel-in-progress: false
     steps:
+      - uses: actions/checkout@v4
+
       - name: Compute lowercase image name
         run: echo "IMAGE=ghcr.io/$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')/fiam-retail-apis" >> "$GITHUB_ENV"
 
@@ -97,13 +99,32 @@ jobs:
             "${{ secrets.STAGING_SSH_USER }}@${{ secrets.STAGING_SSH_HOST }}" \
             bash -s <<'REMOTE'
           set -euo pipefail
-          for app in auth payment; do
+          for app in auth payment admin; do
+            # admin is added after first launch: until its service exists on
+            # the box there is nothing to read the DB URL from, and that must
+            # not block auth/payment deploys.
+            if [ "$app" = admin ] && ! docker service inspect fiam_admin >/dev/null 2>&1; then
+              echo "fiam_admin is not deployed yet - skipping its migrations"
+              continue
+            fi
             name="migrate-${app}-${{ github.run_id }}"
             var="$(echo "$app" | tr a-z A-Z)_DATABASE_URL"
             db_url=$(docker service inspect "fiam_${app}" \
               --format '{{range .Spec.TaskTemplate.ContainerSpec.Env}}{{println .}}{{end}}' \
               | grep "^${var}=" | cut -d= -f2-)
             [ -n "$db_url" ] || { echo "could not read $var from fiam_${app}" >&2; exit 1; }
+            # External Postgres over TLS: hand the one-shot job the same TLS
+            # settings and pinned certificate the running service uses.
+            extra=()
+            if docker service inspect "fiam_${app}" \
+                --format '{{range .Spec.TaskTemplate.ContainerSpec.Env}}{{println .}}{{end}}' \
+                | grep -q '^DB_SSL=true$'; then
+              ca=$(docker service inspect "fiam_${app}" \
+                --format '{{range .Spec.TaskTemplate.ContainerSpec.Mounts}}{{println .Source}}{{end}}' \
+                | grep -m1 'db-ca' || true)
+              extra=(--env DB_SSL=true --env DB_SSL_CA=/etc/fiam/db-ca.pem)
+              [ -z "$ca" ] || extra+=(--mount "type=bind,src=$ca,dst=/etc/fiam/db-ca.pem,readonly")
+            fi
             status=0
             # The runtime image has no package.json (so no `npm run`) — call
             # the TypeORM CLI against the compiled data source directly.
@@ -111,7 +132,138 @@ jobs:
             timeout 300 docker service create --detach=false --name "$name" \
               --mode replicated-job --network fiam_internal \
               --restart-condition none \
-              --env "${var}=${db_url}" \
+              --env "${var}=${db_url}" "${extra[@]}" \
+              "${{ env.IMAGE }}:${{ github.sha }}" \
+              node node_modules/typeorm/cli.js migration:run \
+              -d "dist/apps/${app}/apps/${app}/src/database/data-source.js" || status=$?
+            docker service logs "$name" --no-trunc 2>&1 | tail -n 40 || true
+            docker service rm "$name" >/dev/null
+            [ "$status" -eq 0 ] || { echo "migrations for $app failed" >&2; exit 1; }
+          done
+          REMOTE
+
+      # The console's read-only Postgres role gets column-level grants that are
+      # snapshotted when docker/postgres/admin-roles.sql runs, so a column added
+      # by this deploy's migrations stays invisible to the admin API until the
+      # script is re-run. It is idempotent, so run it every deploy (after the
+      # migrations, before the new code rolls).
+      - name: Refresh admin read-only grants
+        run: |
+          SSH_TARGET="${{ secrets.STAGING_SSH_USER }}@${{ secrets.STAGING_SSH_HOST }}"
+          SSH_OPTS="-i $HOME/.ssh/id_deploy -o IdentitiesOnly=yes"
+          if ! ssh $SSH_OPTS "$SSH_TARGET" 'docker service inspect fiam_admin >/dev/null 2>&1'; then
+            echo "fiam_admin is not deployed yet - skipping"
+            exit 0
+          fi
+          scp $SSH_OPTS docker/postgres/admin-roles.sql docker/backup/pg.sh "$SSH_TARGET:/tmp/"
+          ssh $SSH_OPTS "$SSH_TARGET" bash -s <<'REMOTE'
+          set -euo pipefail
+          cd /opt/fiam/apis/docker
+          set -a; . ./.env; set +a
+          # pgx = docker exec into the in-stack Postgres, or a one-shot client
+          # container against POSTGRES_HOST (see docker/backup/pg.sh).
+          . /tmp/pg.sh
+          pgx psql -v ON_ERROR_STOP=1 -v grants_only=1 \
+              -v admin_pw="$ADMIN_DB_PASSWORD" -v ro_pw="$READONLY_DB_PASSWORD" \
+            < /tmp/admin-roles.sql > /dev/null
+          rm -f /tmp/admin-roles.sql /tmp/pg.sh
+          echo "admin read-only grants refreshed"
+          REMOTE
+
+      # Rolls each service to the immutable :<sha> tag (not :staging) so Swarm
+      # always sees a changed image. The GHCR package is public, so no
+      # registry login is needed. --detach=false blocks until the rollout converges
+      # and fails the job if Swarm rolls back (stack.yml sets
+      # failure_action: rollback, start-first).
+      # Migrations run first (previous step), so new code never meets an
+      # unmigrated schema; if a migration fails the job stops before any
+      # service rolls.
+      - name: Roll out image
+        run: |
+          ssh -i ~/.ssh/id_deploy -o IdentitiesOnly=yes \
+            "${{ secrets.STAGING_SSH_USER }}@${{ secrets.STAGING_SSH_HOST }}" \
+            bash -s <<'REMOTE'
+          set -euo pipefail
+          for svc in auth payment postoffice admin; do
+            if [ "$svc" = admin ] && ! docker service inspect fiam_admin >/dev/null 2>&1; then
+              echo "fiam_admin is not deployed yet - skipping"
+              continue
+            fi
+            docker service update --detach=false \
+              --image "${{ env.IMAGE }}:${{ github.sha }}" "fiam_${svc}"
+            state=$(docker service inspect "fiam_${svc}" --format '{{.UpdateStatus.State}}')
+            if [ "$state" != "completed" ]; then
+              echo "fiam_${svc} update ended in state: $state" >&2
+              exit 1
+            fi
+          done
+          REMOTE
+
+  deploy-production:
+    needs: [docker]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute lowercase image name
+        run: echo "IMAGE=ghcr.io/$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')/fiam-retail-apis" >> "$GITHUB_ENV"
+
+      - name: Configure SSH
+        run: |
+          install -m 700 -d ~/.ssh
+          echo "${{ secrets.PRODUCTION_SSH_KEY }}" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          echo "${{ secrets.PRODUCTION_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+
+      # Runs the compiled TypeORM migrations from the just-pushed image as a
+      # one-shot Swarm job on the internal network (a plain `docker run` can't
+      # join it — see docker/README.md step 7). DB URLs are read from the
+      # already-running services' env so no secrets are duplicated in CI.
+      - name: Run migrations
+        run: |
+          ssh -i ~/.ssh/id_deploy -o IdentitiesOnly=yes \
+            "${{ secrets.PRODUCTION_SSH_USER }}@${{ secrets.PRODUCTION_SSH_HOST }}" \
+            bash -s <<'REMOTE'
+          set -euo pipefail
+          for app in auth payment admin; do
+            # admin is added after first launch: until its service exists on
+            # the box there is nothing to read the DB URL from, and that must
+            # not block auth/payment deploys.
+            if [ "$app" = admin ] && ! docker service inspect fiam_admin >/dev/null 2>&1; then
+              echo "fiam_admin is not deployed yet - skipping its migrations"
+              continue
+            fi
+            name="migrate-${app}-${{ github.run_id }}"
+            var="$(echo "$app" | tr a-z A-Z)_DATABASE_URL"
+            db_url=$(docker service inspect "fiam_${app}" \
+              --format '{{range .Spec.TaskTemplate.ContainerSpec.Env}}{{println .}}{{end}}' \
+              | grep "^${var}=" | cut -d= -f2-)
+            [ -n "$db_url" ] || { echo "could not read $var from fiam_${app}" >&2; exit 1; }
+            # External Postgres over TLS: hand the one-shot job the same TLS
+            # settings and pinned certificate the running service uses.
+            extra=()
+            if docker service inspect "fiam_${app}" \
+                --format '{{range .Spec.TaskTemplate.ContainerSpec.Env}}{{println .}}{{end}}' \
+                | grep -q '^DB_SSL=true$'; then
+              ca=$(docker service inspect "fiam_${app}" \
+                --format '{{range .Spec.TaskTemplate.ContainerSpec.Mounts}}{{println .Source}}{{end}}' \
+                | grep -m1 'db-ca' || true)
+              extra=(--env DB_SSL=true --env DB_SSL_CA=/etc/fiam/db-ca.pem)
+              [ -z "$ca" ] || extra+=(--mount "type=bind,src=$ca,dst=/etc/fiam/db-ca.pem,readonly")
+            fi
+            status=0
+            # The runtime image has no package.json (so no `npm run`) — call
+            # the TypeORM CLI against the compiled data source directly.
+            # `timeout` stops a crash-looping job from hanging the deploy.
+            timeout 300 docker service create --detach=false --name "$name" \
+              --mode replicated-job --network fiam_internal \
+              --restart-condition none \
+              --env "${var}=${db_url}" "${extra[@]}" \
               "${{ env.IMAGE }}:${{ github.sha }}" \
               node node_modules/typeorm/cli.js migration:run \
               -d "dist/apps/${app}/apps/${app}/src/database/data-source.js" || status=$?
@@ -132,10 +284,14 @@ jobs:
       - name: Roll out image
         run: |
           ssh -i ~/.ssh/id_deploy -o IdentitiesOnly=yes \
-            "${{ secrets.STAGING_SSH_USER }}@${{ secrets.STAGING_SSH_HOST }}" \
+            "${{ secrets.PRODUCTION_SSH_USER }}@${{ secrets.PRODUCTION_SSH_HOST }}" \
             bash -s <<'REMOTE'
           set -euo pipefail
-          for svc in auth payment postoffice; do
+          for svc in auth payment postoffice admin; do
+            if [ "$svc" = admin ] && ! docker service inspect fiam_admin >/dev/null 2>&1; then
+              echo "fiam_admin is not deployed yet - skipping"
+              continue
+            fi
             docker service update --detach=false \
               --image "${{ env.IMAGE }}:${{ github.sha }}" "fiam_${svc}"
             state=$(docker service inspect "fiam_${svc}" --format '{{.UpdateStatus.State}}')
@@ -145,3 +301,21 @@ jobs:
             fi
           done
           REMOTE
+
+      # Last gate: the public edge (Traefik + TLS + routing) answers for every
+      # service the customers and staff hit. A rollout that "converged" but
+      # isn't reachable fails the job here instead of being found by a user.
+      - name: Smoke test public endpoints
+        run: |
+          for url in \
+            https://api.auth.usefiam.com/health \
+            https://api.payment.usefiam.com/health \
+            https://api.admin.usefiam.com/health; do
+            ok=0
+            for i in 1 2 3 4 5 6; do
+              if curl -fsS --max-time 10 "$url" >/dev/null; then ok=1; break; fi
+              sleep 5
+            done
+            [ "$ok" -eq 1 ] || { echo "$url did not return 2xx" >&2; exit 1; }
+            echo "ok $url"
+          done

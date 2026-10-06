@@ -6,6 +6,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { PostofficeConfig } from '../config/configuration';
 import { SmsProvider } from './sms-provider.interface';
+import { safeJson } from '@app/common';
 
 interface TermiiSendResponse {
   code?: string;
@@ -55,7 +56,7 @@ export class TermiiSmsProvider implements SmsProvider {
 
     if (!response.ok || body?.code !== 'ok') {
       this.logger.error(
-        `Termii send failed: ${response.status} ${JSON.stringify(body)}`,
+        `Termii send failed: ${response.status} ${safeJson(body)}`,
       );
       throw new ServiceUnavailableException('Failed to send SMS');
     }

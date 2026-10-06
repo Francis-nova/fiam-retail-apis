@@ -27,6 +27,7 @@ import { PendingLogin } from './entities/pending-login.entity';
 import { generateRefreshToken } from '../tokens/token.util';
 import { PaymentProvisioningPublisher } from '../messaging/payment-provisioning.publisher';
 import { NotificationPublisher } from '../messaging/notification.publisher';
+import { SecurityAlertsService } from '../messaging/security-alerts.service';
 
 export interface RequestMeta {
   deviceId?: string;
@@ -66,6 +67,16 @@ function progressOf(user: User): OnboardingProgress {
   };
 }
 
+// Local-dev convenience only: lets the mobile app show the code on screen
+// when no mailer/SMS is wired up. Never honoured in production, whatever the
+// flag says — a code in an API response would defeat the verification.
+function devOtp(otp: string): { otp?: string } {
+  const enabled =
+    process.env.EXPOSE_DEV_OTP === 'true' &&
+    process.env.NODE_ENV !== 'production';
+  return enabled ? { otp } : {};
+}
+
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
@@ -82,13 +93,34 @@ export class AuthService {
     @Inject(BVN_PROVIDER) private readonly bvnProvider: BvnProvider,
     private readonly paymentProvisioningPublisher: PaymentProvisioningPublisher,
     private readonly notificationPublisher: NotificationPublisher,
+    private readonly securityAlerts: SecurityAlertsService,
   ) {}
+
+  private sendEmailOtp(
+    user: { email: string; firstName: string },
+    otp: string,
+    intro: string,
+    heading: string,
+  ): void {
+    this.notificationPublisher.requestEmail(user.email, 'verification-code', {
+      heading,
+      firstName: user.firstName,
+      intro,
+      code: otp,
+      expiryMinutes: '5',
+    });
+  }
 
   async register(
     dto: RegisterDto,
-  ): Promise<{ userId: string; email: string; otp: string }> {
+  ): Promise<{ userId: string; email: string; otp?: string }> {
     let user = await this.usersService.findByEmail(dto.email);
     if (user && user.status === UserStatus.ACTIVE) {
+      throw new ConflictException('An account with this email already exists');
+    }
+    // A suspended account must not be able to "resume signup" — that would
+    // overwrite the password and, via the email OTP, flip it back to ACTIVE.
+    if (user && user.status === UserStatus.SUSPENDED) {
       throw new ConflictException('An account with this email already exists');
     }
 
@@ -110,25 +142,39 @@ export class AuthService {
       });
     }
 
-    // Dumb OTP: this is a demo build with no real mailer wired up yet, so
-    // the code is handed straight back to the caller instead of emailed.
     const otp = await this.otpService.generate(
       user.id,
       OtpPurpose.REGISTRATION,
     );
-    return { userId: user.id, email: user.email, otp };
+    this.sendEmailOtp(
+      user,
+      otp,
+      'Use this code to verify your email and finish creating your Fiam account.',
+      'Verify your email',
+    );
+    return { userId: user.id, email: user.email, ...devOtp(otp) };
   }
 
-  async resendRegistrationOtp(email: string): Promise<{ otp: string }> {
+  async resendRegistrationOtp(email: string): Promise<{ otp?: string }> {
     const user = await this.usersService.findByEmail(email);
-    if (!user || user.emailVerifiedAt) {
+    if (
+      !user ||
+      user.emailVerifiedAt ||
+      user.status !== UserStatus.PENDING_VERIFICATION
+    ) {
       throw new BadRequestException('No pending registration for this email');
     }
     const otp = await this.otpService.generate(
       user.id,
       OtpPurpose.REGISTRATION,
     );
-    return { otp };
+    this.sendEmailOtp(
+      user,
+      otp,
+      'Use this code to verify your email and finish creating your Fiam account.',
+      'Verify your email',
+    );
+    return { ...devOtp(otp) };
   }
 
   async verifyOtp(
@@ -148,6 +194,10 @@ export class AuthService {
     }
 
     if (purpose === OtpPurpose.REGISTRATION) {
+      // Only a genuinely pending signup may be activated by this OTP.
+      if (user.status !== UserStatus.PENDING_VERIFICATION) {
+        throw new UnauthorizedException('Invalid or expired code');
+      }
       await this.usersService.markEmailVerified(user.id);
     }
 
@@ -167,10 +217,34 @@ export class AuthService {
     // device that finished registration doesn't need a PIN challenge on its
     // very next login (it won't have a PIN yet anyway at this point).
     if (meta.deviceId) {
-      await this.devicesService.trust(user.id, meta.deviceId, meta.deviceName);
+      await this.trustDevice(user, meta.deviceId, meta.deviceName);
     }
     const tokens = await this.tokensService.issueTokenPair(user.id, session.id);
     return { ...tokens, progress: progressOf(refreshed) };
+  }
+
+  // Trusts a device, and starts the CBN new-device outflow limit when this is
+  // an existing customer activating on a device we haven't seen: either they
+  // already had another device (a change), or the account predates the window
+  // (so a first-ever device on an established account isn't a free pass).
+  // A brand-new account's very first device is not limited by this rule.
+  private async trustDevice(
+    user: { id: string; createdAt: Date },
+    deviceId: string,
+    deviceName?: string | null,
+  ): Promise<void> {
+    const { created, hadOtherDevices } = await this.devicesService.trust(
+      user.id,
+      deviceId,
+      deviceName,
+    );
+    if (!created) return;
+    const accountAgeMs = Date.now() - user.createdAt.getTime();
+    const established =
+      accountAgeMs > this.usersService.deviceLimitHours * 3_600_000;
+    if (hadOtherDevices || established) {
+      await this.usersService.startDeviceLimit(user.id);
+    }
   }
 
   async login(
@@ -183,9 +257,11 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    const passwordMatches = await this.passwordService.verify(
-      user.passwordHash,
-      password,
+    const passwordMatches = await this.usersService.guardedVerify(
+      user.id,
+      'password',
+      () => this.passwordService.verify(user.passwordHash, password),
+      () => this.securityAlerts.lockout(user, 'password', meta.ipAddress),
     );
     if (!passwordMatches) {
       throw new UnauthorizedException('Invalid credentials');
@@ -200,11 +276,7 @@ export class AuthService {
 
     if (deviceRecognized) {
       if (meta.deviceId) {
-        await this.devicesService.trust(
-          user.id,
-          meta.deviceId,
-          meta.deviceName,
-        );
+        await this.trustDevice(user, meta.deviceId, meta.deviceName);
       }
       // One active session per customer — logging in here must invalidate
       // whatever was still active elsewhere immediately, not just on that
@@ -223,6 +295,10 @@ export class AuthService {
       );
       return { ...tokens, pinRequired: false, progress: progressOf(user) };
     }
+
+    // The right password from a device we haven't seen: the PIN challenge
+    // below still blocks them, but the owner should hear about it.
+    this.securityAlerts.newDevice(user, meta);
 
     const loginTicket = generateRefreshToken();
     await this.pendingLoginsRepo.save(
@@ -266,9 +342,12 @@ export class AuthService {
       throw new UnauthorizedException('Transaction PIN not set');
     }
 
-    const pinMatches = await this.passwordService.verify(
-      user.transactionPinHash,
-      pin,
+    const pinHash = user.transactionPinHash;
+    const pinMatches = await this.usersService.guardedVerify(
+      user.id,
+      'pin',
+      () => this.passwordService.verify(pinHash, pin),
+      () => this.securityAlerts.lockout(user, 'pin', meta.ipAddress),
     );
     if (!pinMatches) {
       await this.pendingLoginsRepo.update(pending.id, {
@@ -283,7 +362,7 @@ export class AuthService {
 
     const deviceId = pending.deviceId ?? meta.deviceId;
     if (deviceId) {
-      await this.devicesService.trust(user.id, deviceId, meta.deviceName);
+      await this.trustDevice(user, deviceId, meta.deviceName);
     }
 
     // One active session per customer — this confirm is the moment the new
@@ -325,14 +404,23 @@ export class AuthService {
     await this.maybeRequestPaymentProvisioning(updated);
   }
 
+  async transferLimit(userId: string) {
+    return this.usersService.transferLimitFor(
+      await this.usersService.findById(userId),
+    );
+  }
+
   async verifyTransactionPin(userId: string, pin: string): Promise<void> {
     const user = await this.usersService.findById(userId);
     if (!user.transactionPinHash) {
       throw new BadRequestException('No transaction PIN set');
     }
-    const matches = await this.passwordService.verify(
-      user.transactionPinHash,
-      pin,
+    const pinHash = user.transactionPinHash;
+    const matches = await this.usersService.guardedVerify(
+      userId,
+      'pin',
+      () => this.passwordService.verify(pinHash, pin),
+      () => this.securityAlerts.lockout(user, 'pin'),
     );
     if (!matches) {
       throw new UnauthorizedException('Incorrect PIN');
@@ -351,9 +439,12 @@ export class AuthService {
         'No transaction PIN set — use create instead',
       );
     }
-    const currentMatches = await this.passwordService.verify(
-      user.transactionPinHash,
-      currentPin,
+    const currentHash = user.transactionPinHash;
+    const currentMatches = await this.usersService.guardedVerify(
+      userId,
+      'pin',
+      () => this.passwordService.verify(currentHash, currentPin),
+      () => this.securityAlerts.lockout(user, 'pin'),
     );
     if (!currentMatches) {
       throw new UnauthorizedException('Current PIN is incorrect');
@@ -378,9 +469,11 @@ export class AuthService {
     confirmNewPassword: string,
   ): Promise<void> {
     const user = await this.usersService.findById(userId);
-    const currentMatches = await this.passwordService.verify(
-      user.passwordHash,
-      currentPassword,
+    const currentMatches = await this.usersService.guardedVerify(
+      userId,
+      'password',
+      () => this.passwordService.verify(user.passwordHash, currentPassword),
+      () => this.securityAlerts.lockout(user, 'password'),
     );
     if (!currentMatches) {
       throw new UnauthorizedException('Current password is incorrect');
@@ -501,7 +594,7 @@ export class AuthService {
     userId: string,
     bvn: string,
     dateOfBirth: string,
-  ): Promise<{ otp: string }> {
+  ): Promise<{ otp?: string }> {
     const user = await this.usersService.findById(userId);
 
     const existing = await this.usersService.findByBvn(bvn);
@@ -548,13 +641,19 @@ export class AuthService {
 
     await this.usersService.setBvn(userId, bvn);
     await this.usersService.setDateOfBirth(userId, dateOfBirth);
-    // Dumb OTP for demo purposes — QoreID's BVN lookup has no OTP dispatch
-    // of its own, so we generate/hash/store our own the same way as email.
+    // QoreID's BVN lookup has no OTP dispatch of its own, so we generate our
+    // own and text it to the phone the customer already verified.
     const otp = await this.otpService.generate(
       userId,
       OtpPurpose.BVN_VERIFICATION,
     );
-    return { otp };
+    if (user.phone) {
+      this.notificationPublisher.requestSms(
+        user.phone,
+        `Your Fiam BVN verification code is ${otp}. It expires in 5 minutes.`,
+      );
+    }
+    return { ...devOtp(otp) };
   }
 
   async verifyBvnOtp(
@@ -608,18 +707,22 @@ export class AuthService {
     });
   }
 
-  async requestPasswordReset(email: string): Promise<{ otp: string }> {
+  async requestPasswordReset(email: string): Promise<{ otp?: string }> {
     const user = await this.usersService.findByEmail(email);
     if (!user || user.status !== UserStatus.ACTIVE) {
       throw new BadRequestException('No account found with this email');
     }
-    // Dumb OTP for demo purposes, same as the other OTP steps — no real
-    // mailer is wired up yet, so the code is handed back in the response.
     const otp = await this.otpService.generate(
       user.id,
       OtpPurpose.PASSWORD_RESET,
     );
-    return { otp };
+    this.sendEmailOtp(
+      user,
+      otp,
+      'Use this code to reset your Fiam password.',
+      'Reset your password',
+    );
+    return { ...devOtp(otp) };
   }
 
   async verifyPasswordResetOtp(

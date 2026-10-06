@@ -14,7 +14,7 @@ import {
 } from './entities/kyc-document.entity';
 import { StorageService } from '../storage/storage.service';
 import { UsersService } from '../users/users.service';
-import { TierUpgradeStatus } from '../users/entities/user.entity';
+import { CustomerTier, TierUpgradeStatus } from '../users/entities/user.entity';
 import { OcrService } from './ocr.service';
 import { NIN_PROVIDER } from './nin-provider.interface';
 import type { NinProvider } from './nin-provider.interface';
@@ -42,7 +42,7 @@ interface PendingLivenessSession {
 // NIN_SELFIE requirement here: the liveness photo now lives entirely inside
 // QoreID's own `liveness_nin` SDK flow (see verifyNin's doc comment) — we
 // never receive or store the raw biometric image ourselves.
-const REQUIRED_DOC_TYPES: KycDocumentType[] = [
+export const REQUIRED_DOC_TYPES: KycDocumentType[] = [
   KycDocumentType.GOVERNMENT_ID_FRONT,
   KycDocumentType.GOVERNMENT_ID_BACK,
   KycDocumentType.PROOF_OF_ADDRESS,
@@ -230,6 +230,14 @@ export class KycDocumentsService {
       this.docsRepo.find({ where: { userId } }),
       this.usersService.findById(userId),
     ]);
+    // An approved customer has nothing left to submit, and a duplicate
+    // submit while still under review would only reset the queue position.
+    if (user.tier === CustomerTier.TIER_3) {
+      throw new BadRequestException('Your account is already Tier 3');
+    }
+    if (user.tierUpgradeStatus === TierUpgradeStatus.UNDER_REVIEW) {
+      throw new ConflictException('Your upgrade is already under review');
+    }
     const uploaded = new Set(docs.map((doc) => doc.docType));
     const missing = REQUIRED_DOC_TYPES.filter((type) => !uploaded.has(type));
     if (missing.length > 0) {
@@ -255,6 +263,12 @@ export class KycDocumentsService {
       tier: user.tier,
       status: user.tierUpgradeStatus,
       submittedAt: user.tierUpgradeSubmittedAt,
+      decidedAt: user.tierUpgradeDecidedAt,
+      // Only meaningful (and only shown) after a rejection.
+      rejectionReason:
+        user.tierUpgradeStatus === TierUpgradeStatus.REJECTED
+          ? user.tierUpgradeDecisionNote
+          : null,
       requiredDocTypes: REQUIRED_DOC_TYPES,
       ninVerified: Boolean(user.ninVerifiedAt),
     };

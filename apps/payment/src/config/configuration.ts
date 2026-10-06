@@ -37,7 +37,7 @@ export interface PaymentConfig {
     walletBaseUrl: string;
     consumerKey: string;
     consumerSecret: string;
-    webhookSecret: string;
+    webhookAuthToken: string;
     // VFD's own bank code — a toBank equal to this means an intra (VFD to
     // VFD) transfer rather than inter (VFD to another bank). Defaults to
     // the sandbox's own test value (see "5. Test Accounts" in VFD's docs).
@@ -85,7 +85,7 @@ export default (): PaymentConfig => ({
       'https://api-devapps.vfdbank.systems/vtech-wallet/api/v2/wallet2',
     consumerKey: process.env.VFD_CONSUMER_KEY ?? '',
     consumerSecret: process.env.VFD_CONSUMER_SECRET ?? '',
-    webhookSecret: process.env.VFD_WEBHOOK_SECRET ?? '',
+    webhookAuthToken: process.env.VFD_WEBHOOK_AUTH_TOKEN ?? '',
     bankCode: process.env.VFD_BANK_CODE ?? '999999',
     walletName: process.env.VFD_WALLET_NAME ?? 'ADL',
   },

@@ -4,6 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { Transaction } from '../transactions/entities/transaction.entity';
 import { PayoutsController } from './payouts.controller';
 import { PayoutsService } from './payouts.service';
+import { PinVerifierService } from './pin-verifier.service';
 import { PayoutStatusQueryProcessor } from './payout-status-query.processor';
 import { PAYOUT_STATUS_QUERY_QUEUE } from './payout-status-query.queue';
 import { WalletsModule } from '../wallets/wallets.module';
@@ -25,6 +26,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     NotificationsModule,
   ],
   controllers: [PayoutsController],
-  providers: [PayoutsService, PayoutStatusQueryProcessor],
+  providers: [PayoutsService, PayoutStatusQueryProcessor, PinVerifierService],
+  exports: [PayoutsService],
 })
 export class PayoutsModule {}

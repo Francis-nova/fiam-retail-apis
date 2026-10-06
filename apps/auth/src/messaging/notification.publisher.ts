@@ -4,6 +4,7 @@ import { ClientProxy } from '@nestjs/microservices';
 import {
   NOTIFICATION_REQUESTED_PATTERN,
   NotificationChannel,
+  PushTemplate,
 } from '@app/common';
 import { POSTOFFICE_NOTIFICATION_CLIENT } from './postoffice-notification-client.token';
 
@@ -26,6 +27,38 @@ export class NotificationPublisher {
       // No template renderer yet — postoffice sends `data.message` as-is.
       template: 'raw-text',
       data: { message: text },
+      requestedAt: new Date().toISOString(),
+    });
+  }
+
+  // Push to every device the customer has registered (recipient = user id).
+  requestPush(
+    userId: string,
+    template: PushTemplate,
+    data: Record<string, string> = {},
+  ): void {
+    this.client.emit(NOTIFICATION_REQUESTED_PATTERN, {
+      messageId: randomUUID(),
+      channel: NotificationChannel.PUSH,
+      recipient: userId,
+      template,
+      data,
+      requestedAt: new Date().toISOString(),
+    });
+  }
+
+  // Templated email — postoffice owns the copy, layout and subject.
+  requestEmail(
+    recipient: string,
+    template: string,
+    data: Record<string, string>,
+  ): void {
+    this.client.emit(NOTIFICATION_REQUESTED_PATTERN, {
+      messageId: randomUUID(),
+      channel: NotificationChannel.EMAIL,
+      recipient,
+      template,
+      data,
       requestedAt: new Date().toISOString(),
     });
   }
