@@ -34,7 +34,12 @@ for db in $DATABASES; do
 done
 
 # Roles aren't part of a per-database dump (fiam_admin_app, fiam_readonly...).
-pgx pg_dumpall --roles-only > "$OUT/roles.sql"
+# A superuser gets the full dump (with password hashes); a plain owner role
+# (external managed/self-hosted Postgres) can't read pg_authid, so fall back to
+# the same dump without role passwords.
+pgx pg_dumpall --roles-only > "$OUT/roles.sql" 2>/dev/null \
+  || { echo "roles: not a superuser, dumping without role passwords"; \
+       pgx pg_dumpall --roles-only --no-role-passwords > "$OUT/roles.sql"; }
 
 # KYC documents: archive the in-stack MinIO volume. Skipped once documents live
 # in external object storage (OBJECT_STORAGE_ENDPOINT is anything but "minio"):

@@ -408,7 +408,7 @@ Nothing below exists yet; staging values are the only ones in the repo.
 Separate box, separate stack, **fresh secrets** (nothing copied from staging).
 Production tracks the `main` branch (`:main` image); staging tracks `staging`.
 Hostnames: `api.auth.` / `api.payment.` / `api.admin.usefiam.com`; the console is
-hosted on **Netlify** at `console.internal.usefiam.com` (not part of this stack).
+hosted on **Vercel** at `console.internal.usefiam.com` (not part of this stack).
 `stack.yml` defaults are staging's; production overrides them from `docker/.env`
 (`AUTH_HOST`, `PAYMENT_HOST`, `ADMIN_API_HOST`) — same file, no fork. The
 staging console service moved to `console-stack.yml`.
@@ -416,7 +416,7 @@ staging console service moved to `console-stack.yml`.
 **One-time setup (in order):**
 
 1. **DNS** — A records for the three API hostnames → the new box's IP (needed
-   before Let's Encrypt can issue certificates); `console.internal` → Netlify.
+   before Let's Encrypt can issue certificates); `console.internal` → Vercel.
 2. **Bootstrap the OS** as root: Docker, Swarm, `edge` network, firewall
    (22/80/443 only), fail2ban, auto security patches, log rotation, a `deploy`
    user. `DEPLOY_PUBKEY` is the *CI* public key (generate a new keypair for
@@ -444,9 +444,10 @@ staging console service moved to `console-stack.yml`.
    unchanged (Traefik only needs `ACME_EMAIL` from the production `.env`).
 6. **Migrations** (step 7 above), **RabbitMQ DLX** (step 8 above), then
    `postgres/admin-roles.sql` and the first super admin ("Admin console API").
-7. **Console (Netlify)**: import the `fiam-console` repo (`netlify.toml` has the
-   build, SPA redirect and CSP), set build env `VITE_API_URL=https://api.admin.usefiam.com`,
-   attach the custom domain `console.internal.usefiam.com`.
+7. **Console (Vercel)**: the `fiam-console` repo's production branch (`main`) must
+   contain `vercel.json` (SPA rewrite + CSP, allows the production and staging admin
+   APIs); set build env `VITE_API_URL=https://api.admin.usefiam.com` and attach the
+   domain `console.internal.usefiam.com`.
 8. **Backups**: install the cron from "Backups" and run
    `backup/restore-check.sh` once. Turn on bucket versioning.
 9. **VFD**: give VFD the production webhook URL
