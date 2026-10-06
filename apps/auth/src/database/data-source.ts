@@ -1,3 +1,4 @@
+import { pgSsl } from '@app/common';
 import { config } from 'dotenv';
 import { DataSource } from 'typeorm';
 
@@ -21,6 +22,7 @@ import { AccountDeletionRequest } from '../deletion/entities/account-deletion-re
 export const AppDataSource = new DataSource({
   type: 'postgres',
   url: process.env.AUTH_DATABASE_URL,
+  ssl: pgSsl(),
   entities: [
     User,
     Session,

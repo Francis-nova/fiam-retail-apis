@@ -1,3 +1,4 @@
+import { pgSsl } from '@app/common';
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -15,6 +16,7 @@ import { PaymentConfig } from '../config/configuration';
       useFactory: (configService: ConfigService<PaymentConfig, true>) => ({
         type: 'postgres',
         url: configService.get('database.url', { infer: true }),
+        ssl: pgSsl(),
         entities: [Wallet, Address, Transaction, Beneficiary, WebhookEvent],
         migrations: [__dirname + '/migrations/*{.ts,.js}'],
         synchronize: false,

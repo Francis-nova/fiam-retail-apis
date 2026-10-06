@@ -1,3 +1,4 @@
+import { pgSsl } from '@app/common';
 import { config } from 'dotenv';
 import { DataSource } from 'typeorm';
 import { Wallet } from '../wallets/entities/wallet.entity';
@@ -17,6 +18,7 @@ config({ path: 'apps/payment/.env', quiet: true });
 export const AppDataSource = new DataSource({
   type: 'postgres',
   url: process.env.PAYMENT_DATABASE_URL,
+  ssl: pgSsl(),
   entities: [Wallet, Address, Transaction, Beneficiary, WebhookEvent],
   migrations: [__dirname + '/migrations/*{.ts,.js}'],
   synchronize: false,

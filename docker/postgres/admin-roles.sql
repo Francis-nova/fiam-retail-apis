@@ -9,6 +9,14 @@
 --       -v admin_pw="$ADMIN_DB_PASSWORD" -v ro_pw="$READONLY_DB_PASSWORD" \
 --     < postgres/admin-roles.sql
 --
+-- Two stages, because creating roles needs a Postgres superuser (or at least
+-- CREATEROLE) that the application's own DB user usually is not:
+--   -v roles_only=1   roles + the admin database. Run ONCE, as a superuser, on
+--                     the database host (before the admin service first starts).
+--   -v grants_only=1  the column-level read grants. Run as the DB owner after
+--                     every migration (CI does this each deploy).
+--   neither           both stages (the in-stack Postgres, where the user is superuser).
+--
 -- Why this exists: without it the admin container would carry the Postgres
 -- superuser password for every database. With it, a compromised admin
 -- service can only
@@ -24,6 +32,7 @@
 \if :{?payment_db} \else \set payment_db fiam_payment \endif
 \if :{?admin_db} \else \set admin_db fiam_admin \endif
 
+\if :{?grants_only} \else
 -- ---------------------------------------------------------------- roles
 SELECT 'CREATE ROLE fiam_admin_app LOGIN'
  WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'fiam_admin_app')
@@ -52,6 +61,9 @@ SELECT format('REVOKE ALL ON DATABASE %I FROM PUBLIC', :'admin_db')
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 GRANT ALL ON SCHEMA public TO fiam_admin_app;
 
+\endif
+
+\if :{?roles_only} \else
 -- ------------------------------------------- read-only: auth service data
 \connect :"auth_db"
 -- One transaction: the REVOKE + re-GRANT below must never be visible half-done,
@@ -126,3 +138,4 @@ BEGIN
   END LOOP;
 END $$;
 COMMIT;
+\endif

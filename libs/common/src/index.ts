@@ -9,3 +9,4 @@ export * from './http/harden';
 export * from './http/rate-limit.module';
 export * from './http/redis-throttler.storage';
 export * from './observability/error-tracking';
+export * from './database/pg-ssl';

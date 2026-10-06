@@ -1,0 +1,40 @@
+# Staging staff console (static SPA), split out of stack.yml so production -
+# whose console is on Netlify - doesn't try to run it. Same stack name keeps the
+# service called fiam_console:
+#   cd docker && set -a && . ./.env && set +a && docker stack deploy -c console-stack.yml fiam
+# (plain `docker stack deploy` without --prune leaves it running when stack.yml
+# no longer lists it, so existing staging is undisturbed.)
+version: '3.8'
+
+x-deploy-defaults: &deploy-defaults
+  replicas: 1
+  restart_policy:
+    condition: on-failure
+    delay: 5s
+    max_attempts: 5
+  update_config:
+    order: start-first
+    failure_action: rollback
+
+services:
+  # Staff console (static SPA). Built ON the server from the fiam-console repo
+  # (no registry): see docker/README.md "Admin console API" step 7.
+  console:
+    image: fiam-console:staging
+    environment:
+      # The admin API origin the console's CSP allows it to call.
+      API_ORIGIN: ${CONSOLE_API_ORIGIN:-https://api.admin.staging.usefiam.com}
+    networks:
+      - edge
+    deploy:
+      <<: *deploy-defaults
+      labels:
+        - traefik.enable=true
+        - traefik.http.routers.console.rule=Host(`console.staging.usefiam.com`)
+        - traefik.http.routers.console.entrypoints=websecure
+        - traefik.http.routers.console.tls.certresolver=le
+        - traefik.http.services.console.loadbalancer.server.port=80
+
+networks:
+  edge:
+    external: true

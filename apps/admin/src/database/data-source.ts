@@ -1,3 +1,4 @@
+import { pgSsl } from '@app/common';
 import { config } from 'dotenv';
 import { DataSource } from 'typeorm';
 
@@ -10,6 +11,7 @@ import { Posting } from '../postings/entities/posting.entity';
 export const AppDataSource = new DataSource({
   type: 'postgres',
   url: process.env.ADMIN_DATABASE_URL,
+  ssl: pgSsl(),
   entities: [StaffUser, StaffRefreshToken, AuditLog, Posting],
   migrations: [__dirname + '/migrations/*{.ts,.js}'],
   synchronize: false,

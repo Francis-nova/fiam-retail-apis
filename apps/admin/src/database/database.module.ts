@@ -1,3 +1,4 @@
+import { pgSsl } from '@app/common';
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -14,6 +15,7 @@ import { Posting } from '../postings/entities/posting.entity';
       useFactory: (config: ConfigService<AdminConfig, true>) => ({
         type: 'postgres',
         url: config.get('database.url', { infer: true }),
+        ssl: pgSsl(),
         entities: [StaffUser, StaffRefreshToken, AuditLog, Posting],
         migrations: [__dirname + '/migrations/*{.ts,.js}'],
         synchronize: false,

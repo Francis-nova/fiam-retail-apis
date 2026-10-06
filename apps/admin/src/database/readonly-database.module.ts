@@ -1,3 +1,4 @@
+import { pgSsl } from '@app/common';
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -16,6 +17,7 @@ const readonly = (name: string, key: 'authUrl' | 'paymentUrl') =>
     useFactory: (config: ConfigService<AdminConfig, true>) => ({
       type: 'postgres' as const,
       url: config.get(`database.${key}`, { infer: true }),
+      ssl: pgSsl(),
       entities: [],
       synchronize: false,
       migrationsRun: false,

@@ -20,8 +20,7 @@ DATABASES="${BACKUP_DATABASES:-fiam_auth fiam_payment fiam_admin}"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 OUT="$BACKUP_DIR/$STAMP"
 
-PG="$(docker ps -q -f name=fiam_postgres | head -1)"
-[ -n "$PG" ] || { echo "postgres container not found" >&2; exit 1; }
+. "$(dirname "$0")/pg.sh"
 
 umask 077
 mkdir -p "$OUT"
@@ -29,13 +28,13 @@ mkdir -p "$OUT"
 for db in $DATABASES; do
   echo "dumping $db"
   # --no-owner/--no-acl so a dump restores cleanly into a fresh instance.
-  docker exec "$PG" pg_dump -U "${POSTGRES_USER:-postgres}" -Fc --no-owner --no-acl "$db" > "$OUT/$db.dump"
+  pgx pg_dump -Fc --no-owner --no-acl "$db" > "$OUT/$db.dump"
   # A dump that can't even be listed is worthless: catch that now, not at 3am.
-  docker exec -i "$PG" pg_restore --list < "$OUT/$db.dump" > /dev/null
+  pgx pg_restore --list < "$OUT/$db.dump" > /dev/null
 done
 
 # Roles aren't part of a per-database dump (fiam_admin_app, fiam_readonly...).
-docker exec "$PG" pg_dumpall -U "${POSTGRES_USER:-postgres}" --roles-only > "$OUT/roles.sql"
+pgx pg_dumpall --roles-only > "$OUT/roles.sql"
 
 # KYC documents: archive the in-stack MinIO volume. Skipped once documents live
 # in external object storage (OBJECT_STORAGE_ENDPOINT is anything but "minio"):

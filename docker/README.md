@@ -403,6 +403,88 @@ Nothing below exists yet; staging values are the only ones in the repo.
 - [ ] Error tracking + uptime monitoring on `/health` of every service.
 - [ ] Run `postgres/admin-roles.sql` after the auth/payment migrations.
 
+## Production server
+
+Separate box, separate stack, **fresh secrets** (nothing copied from staging).
+Production tracks the `main` branch (`:main` image); staging tracks `staging`.
+Hostnames: `api.auth.` / `api.payment.` / `api.admin.usefiam.com`; the console is
+hosted on **Netlify** at `console.internal.usefiam.com` (not part of this stack).
+`stack.yml` defaults are staging's; production overrides them from `docker/.env`
+(`AUTH_HOST`, `PAYMENT_HOST`, `ADMIN_API_HOST`) — same file, no fork. The
+staging console service moved to `console-stack.yml`.
+
+**One-time setup (in order):**
+
+1. **DNS** — A records for the three API hostnames → the new box's IP (needed
+   before Let's Encrypt can issue certificates); `console.internal` → Netlify.
+2. **Bootstrap the OS** as root: Docker, Swarm, `edge` network, firewall
+   (22/80/443 only), fail2ban, auto security patches, log rotation, a `deploy`
+   user. `DEPLOY_PUBKEY` is the *CI* public key (generate a new keypair for
+   production — never reuse staging's):
+   ```
+   DEPLOY_PUBKEY="ssh-ed25519 AAAA... fiam-ci-production" bash docker/production/bootstrap.sh
+   ```
+   Then, **in a second terminal while the first stays open**, confirm
+   `ssh deploy@<ip>` works with a key, and only then disable password and root
+   SSH login (`PasswordAuthentication no`, `PermitRootLogin no` in
+   `/etc/ssh/sshd_config.d/99-hardening.conf`, `systemctl reload ssh`).
+3. **GHCR** — the package is public (staging relies on this); if you make it
+   private, `docker login ghcr.io` as `deploy`.
+4. **Code + secrets** as `deploy`:
+   ```
+   git clone https://github.com/Francis-nova/fiam-retail-apis /opt/fiam/apis
+   cd /opt/fiam/apis && git checkout main
+   cp docker/.env.production.example docker/.env && chmod 600 docker/.env
+   # fill it in, then:
+   bash docker/production/preflight.sh      # must print "preflight passed"
+   ```
+   Keep an offline copy of `.env` (password manager) — losing
+   `ADMIN_TOTP_ENCRYPTION_KEY` or `BACKUP_ENCRYPTION_PASSPHRASE` is unrecoverable.
+5. **Traefik, then the stack** — steps 5–6 of "One-time server setup" above,
+   unchanged (Traefik only needs `ACME_EMAIL` from the production `.env`).
+6. **Migrations** (step 7 above), **RabbitMQ DLX** (step 8 above), then
+   `postgres/admin-roles.sql` and the first super admin ("Admin console API").
+7. **Console (Netlify)**: import the `fiam-console` repo (`netlify.toml` has the
+   build, SPA redirect and CSP), set build env `VITE_API_URL=https://api.admin.usefiam.com`,
+   attach the custom domain `console.internal.usefiam.com`.
+8. **Backups**: install the cron from "Backups" and run
+   `backup/restore-check.sh` once. Turn on bucket versioning.
+9. **VFD**: give VFD the production webhook URL
+   (`https://api.payment.usefiam.com/...`) and the production
+   `VFD_WEBHOOK_AUTH_TOKEN`; fund/verify with a small real transaction before
+   announcing.
+
+**External Postgres.** Production does not run the in-stack Postgres (or MinIO):
+deploy with the overlay, `bash production/deploy-stack.sh`
+(overlay `production/stack.production.yml`), which scales both to 0. `.env` sets `POSTGRES_HOST/PORT`, `DB_SSL=true` and the
+pinned server certificate (`DB_SSL_CA_HOST`, mounted into auth/payment/admin).
+TypeORM ignores `?sslmode=` in URLs, so TLS is wired through
+`libs/common/src/database/pg-ssl.ts`. The Postgres password may contain special characters: single-quote it in `.env`
+and deploy with `production/deploy-stack.sh`, which URL-encodes it.
+Restrict the database host's firewall (port 5432) to this server's IP. Backups
+and `admin-roles.sql` reach it through a one-shot `postgres:17-alpine` client
+container (`backup/pg.sh`); `restore-check.sh` creates throwaway `restorecheck_*`
+databases on that server, so the user needs CREATEDB.
+Production does **not** use the least-privilege admin roles (`admin-roles.sql`): the
+admin service connects as the same DB user as auth/payment (overlay env), and CI
+skips the grants refresh. Trade-off accepted: a compromised admin service could read
+credential-hash columns and write to the other databases. `admin-roles.sql` stays
+in the repo (staging uses it) if this is tightened later. The database server
+is Postgres 18, so the client image is `postgres:18-alpine`.
+
+**CI/CD (already in `ci.yml`):** a push to `main` runs lint → build → image →
+`deploy-production` (migrate → refresh admin grants → roll services → smoke test
+the three public `/health` URLs). In GitHub → Settings → Environments, create
+`production` with **required reviewers** (this is the manual approval gate) and
+the secrets `PRODUCTION_SSH_HOST`, `PRODUCTION_SSH_USER` (`deploy`),
+`PRODUCTION_SSH_KEY`, `PRODUCTION_KNOWN_HOSTS` (`ssh-keyscan -t ed25519 <ip>`;
+verify the fingerprint against the Hetzner console). Restrict the `main` branch
+(PR + passing checks) so only reviewed code can reach this job.
+
+**Rollback:** `docker service update --rollback fiam_<svc>`, or redeploy a
+previous commit's `:<sha>` image. Migrations are not auto-reverted — make them
+backward-compatible with the previous release.
+
 ## Deploying a new build
 
 Once CI has pushed a new image for a commit on `staging`:

@@ -3,6 +3,9 @@
 # image (see ../Dockerfile) that's differentiated per service only by
 # `command:`.
 #
+# The staging staff console is a separate file (console-stack.yml); production's
+# console is hosted on Netlify and is not deployed here.
+#
 # Requires the `edge` overlay network from traefik-stack.yml to already
 # exist (auth/payment join it so Traefik can route to them; postoffice has
 # no public API — it's only reached over RabbitMQ — so it stays off `edge`;
@@ -103,7 +106,10 @@ services:
       # Rate-limit counters (shared, survive restarts).
       REDIS_URL: redis://redis:6379
       AUTH_PORT: 7001
-      AUTH_DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/fiam_auth
+      AUTH_DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@${POSTGRES_HOST:-postgres}:${POSTGRES_PORT:-5432}/fiam_auth
+      # TLS to a Postgres outside this stack (see libs/common pg-ssl.ts); off by default.
+      DB_SSL: ${DB_SSL:-false}
+      DB_SSL_CA: ${DB_SSL_CA:-}
       CORS_ORIGIN: ${CORS_ORIGIN:-*}
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
       JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-15m}
@@ -145,7 +151,7 @@ services:
       <<: *deploy-defaults
       labels:
         - traefik.enable=true
-        - traefik.http.routers.auth.rule=Host(`api.auth.staging.usefiam.com`) && !PathPrefix(`/internal`)
+        - traefik.http.routers.auth.rule=Host(`${AUTH_HOST:-api.auth.staging.usefiam.com}`) && !PathPrefix(`/internal`)
         - traefik.http.routers.auth.entrypoints=websecure
         - traefik.http.routers.auth.tls.certresolver=le
         - traefik.http.services.auth.loadbalancer.server.port=7001
@@ -156,7 +162,10 @@ services:
     environment:
       NODE_ENV: production
       PAYMENT_PORT: 7003
-      PAYMENT_DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/fiam_payment
+      PAYMENT_DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@${POSTGRES_HOST:-postgres}:${POSTGRES_PORT:-5432}/fiam_payment
+      # TLS to a Postgres outside this stack (see libs/common pg-ssl.ts); off by default.
+      DB_SSL: ${DB_SSL:-false}
+      DB_SSL_CA: ${DB_SSL_CA:-}
       CORS_ORIGIN: ${CORS_ORIGIN:-*}
       RABBITMQ_URL: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASSWORD}@rabbitmq:5672
       REDIS_URL: redis://redis:6379
@@ -184,7 +193,7 @@ services:
       <<: *deploy-defaults
       labels:
         - traefik.enable=true
-        - traefik.http.routers.payment.rule=Host(`api.payment.staging.usefiam.com`) && !PathPrefix(`/internal`)
+        - traefik.http.routers.payment.rule=Host(`${PAYMENT_HOST:-api.payment.staging.usefiam.com}`) && !PathPrefix(`/internal`)
         - traefik.http.routers.payment.entrypoints=websecure
         - traefik.http.routers.payment.tls.certresolver=le
         - traefik.http.services.payment.loadbalancer.server.port=7003
@@ -238,11 +247,14 @@ services:
       # Rate-limit counters (shared, survive restarts).
       REDIS_URL: redis://redis:6379
       # Own database, owned by a dedicated role (not the Postgres superuser).
-      ADMIN_DATABASE_URL: postgres://fiam_admin_app:${ADMIN_DB_PASSWORD:?set ADMIN_DB_PASSWORD in docker/.env}@postgres:5432/fiam_admin
+      ADMIN_DATABASE_URL: postgres://fiam_admin_app:${ADMIN_DB_PASSWORD:?set ADMIN_DB_PASSWORD in docker/.env}@${POSTGRES_HOST:-postgres}:${POSTGRES_PORT:-5432}/fiam_admin
+      # TLS to a Postgres outside this stack (see libs/common pg-ssl.ts); off by default.
+      DB_SSL: ${DB_SSL:-false}
+      DB_SSL_CA: ${DB_SSL_CA:-}
       # Read-only, column-limited role into the other services' databases
       # (see postgres/admin-roles.sql) — never the superuser.
-      AUTH_READONLY_DATABASE_URL: postgres://fiam_readonly:${READONLY_DB_PASSWORD:?set READONLY_DB_PASSWORD in docker/.env}@postgres:5432/fiam_auth
-      PAYMENT_READONLY_DATABASE_URL: postgres://fiam_readonly:${READONLY_DB_PASSWORD}@postgres:5432/fiam_payment
+      AUTH_READONLY_DATABASE_URL: postgres://fiam_readonly:${READONLY_DB_PASSWORD:?set READONLY_DB_PASSWORD in docker/.env}@${POSTGRES_HOST:-postgres}:${POSTGRES_PORT:-5432}/fiam_auth
+      PAYMENT_READONLY_DATABASE_URL: postgres://fiam_readonly:${READONLY_DB_PASSWORD}@${POSTGRES_HOST:-postgres}:${POSTGRES_PORT:-5432}/fiam_payment
       # Called from a browser, so CORS stays on: must be the console's exact origin.
       CORS_ORIGIN: ${ADMIN_CORS_ORIGIN:?set ADMIN_CORS_ORIGIN (the console's origin) in docker/.env}
       # Deliberately NOT JWT_ACCESS_SECRET: a staff token must never validate
@@ -268,28 +280,10 @@ services:
       <<: *deploy-defaults
       labels:
         - traefik.enable=true
-        - traefik.http.routers.admin.rule=Host(`api.admin.staging.usefiam.com`)
+        - traefik.http.routers.admin.rule=Host(`${ADMIN_API_HOST:-api.admin.staging.usefiam.com}`)
         - traefik.http.routers.admin.entrypoints=websecure
         - traefik.http.routers.admin.tls.certresolver=le
         - traefik.http.services.admin.loadbalancer.server.port=7004
-
-  # Staff console (static SPA). Built ON the server from the fiam-console repo
-  # (no registry): see docker/README.md "Admin console API" step 7.
-  console:
-    image: fiam-console:staging
-    environment:
-      # The admin API origin the console's CSP allows it to call.
-      API_ORIGIN: ${CONSOLE_API_ORIGIN:-https://api.admin.staging.usefiam.com}
-    networks:
-      - edge
-    deploy:
-      <<: *deploy-defaults
-      labels:
-        - traefik.enable=true
-        - traefik.http.routers.console.rule=Host(`console.staging.usefiam.com`)
-        - traefik.http.routers.console.entrypoints=websecure
-        - traefik.http.routers.console.tls.certresolver=le
-        - traefik.http.services.console.loadbalancer.server.port=80
 
 networks:
   internal:

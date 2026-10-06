@@ -1,3 +1,4 @@
+import { pgSsl } from '@app/common';
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -19,6 +20,7 @@ import { AuthConfig } from '../config/configuration';
       useFactory: (configService: ConfigService<AuthConfig, true>) => ({
         type: 'postgres',
         url: configService.get('database.url', { infer: true }),
+        ssl: pgSsl(),
         entities: [
           User,
           Session,
