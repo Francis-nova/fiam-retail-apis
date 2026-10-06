@@ -20,12 +20,12 @@ services:
     environment:
       # POSTGRES_PASSWORD_URL = the URL-encoded password, exported by
       # production/deploy-stack.sh (the raw password may contain @ $ : / etc.).
-      AUTH_DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD_URL:?deploy with production/deploy-stack.sh}@${POSTGRES_HOST}:${POSTGRES_PORT:-5432}/fiam_auth
+      AUTH_DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD_URL}@${POSTGRES_HOST}:${POSTGRES_PORT:-5432}/fiam_auth
     volumes:
       - ${DB_SSL_CA_HOST:?set DB_SSL_CA_HOST in docker/.env}:/etc/fiam/db-ca.pem:ro
   payment:
     environment:
-      PAYMENT_DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD_URL:?deploy with production/deploy-stack.sh}@${POSTGRES_HOST}:${POSTGRES_PORT:-5432}/fiam_payment
+      PAYMENT_DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD_URL}@${POSTGRES_HOST}:${POSTGRES_PORT:-5432}/fiam_payment
     volumes:
       - ${DB_SSL_CA_HOST}:/etc/fiam/db-ca.pem:ro
   admin:
@@ -34,7 +34,7 @@ services:
       # (no separate fiam_admin_app / fiam_readonly roles, so ADMIN_DB_PASSWORD
       # and READONLY_DB_PASSWORD in .env are unused). Its auth/payment
       # connections are still forced into read-only sessions by the app.
-      ADMIN_DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD_URL:?deploy with production/deploy-stack.sh}@${POSTGRES_HOST}:${POSTGRES_PORT:-5432}/fiam_admin
+      ADMIN_DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD_URL}@${POSTGRES_HOST}:${POSTGRES_PORT:-5432}/fiam_admin
       AUTH_READONLY_DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD_URL}@${POSTGRES_HOST}:${POSTGRES_PORT:-5432}/fiam_auth
       PAYMENT_READONLY_DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD_URL}@${POSTGRES_HOST}:${POSTGRES_PORT:-5432}/fiam_payment
     volumes:
