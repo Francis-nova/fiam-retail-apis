@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import type { ConnectionOptions } from 'node:tls';
+import type { ConnectionOptions, TlsOptions } from 'node:tls';
 
 /**
  * TLS options for the Postgres driver, from the environment. TypeORM ignores
@@ -19,12 +19,15 @@ import type { ConnectionOptions } from 'node:tls';
  * Returns `undefined` when TLS is off, so it can be passed straight into the
  * TypeORM options (`ssl: pgSsl()`).
  */
-export function pgSsl(): ConnectionOptions | undefined {
+export function pgSsl(): TlsOptions | undefined {
   if (process.env.DB_SSL !== 'true') return undefined;
   const caPath = process.env.DB_SSL_CA;
-  return {
+  const options: ConnectionOptions = {
     ca: caPath ? readFileSync(caPath, 'utf8') : undefined,
     rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED !== 'false',
     ...(caPath ? { checkServerIdentity: () => undefined } : {}),
   };
+  // TypeORM types `ssl` as the server-side TlsOptions, but hands the object to
+  // `pg`, which uses it as client options (incl. checkServerIdentity).
+  return options as TlsOptions;
 }
