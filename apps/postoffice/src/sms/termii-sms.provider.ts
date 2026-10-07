@@ -35,20 +35,24 @@ export class TermiiSmsProvider implements SmsProvider {
       );
     }
 
-    const response = await fetch(`${baseUrl}/api/sms/send`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        api_key: apiKey,
-        to,
-        from: senderId,
-        sms: message,
-        type: 'plain',
-        // "dnd" so transactional messages still reach MTN numbers with
-        // Do-Not-Disturb active, unlike the "generic" promotional route.
-        channel: 'dnd',
-      }),
-    });
+    // Tolerate a trailing slash in TERMII_BASE_URL (it produced `//api/sms/send`, a 404).
+    const response = await fetch(
+      `${baseUrl.replace(/\/+$/, '')}/api/sms/send`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          api_key: apiKey,
+          to,
+          from: senderId,
+          sms: message,
+          type: 'plain',
+          // "dnd" so transactional messages still reach MTN numbers with
+          // Do-Not-Disturb active, unlike the "generic" promotional route.
+          channel: 'dnd',
+        }),
+      },
+    );
 
     const body = (await response
       .json()
