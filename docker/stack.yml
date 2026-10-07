@@ -121,6 +121,8 @@ services:
       QOREID_BASE_URL: ${QOREID_BASE_URL:-https://api.qoreid.com}
       QOREID_LIVENESS_CLIENT_ID: ${QOREID_LIVENESS_CLIENT_ID:-}
       QOREID_LIVENESS_SECRET: ${QOREID_LIVENESS_SECRET:-}
+      # HMAC key for QoreID's webhook signature (x-verifyme-signature); blank = POST /webhooks/qoreid answers 503.
+      QOREID_WEBHOOK_SECRET: ${QOREID_WEBHOOK_SECRET:-}
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-}
       # KYC document storage (any S3-compatible store). The variables are set
       # in docker/.env - for the in-stack MinIO use endpoint=minio, port=9000,

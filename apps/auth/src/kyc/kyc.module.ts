@@ -13,6 +13,7 @@ import { OcrService } from './ocr.service';
 import { KycDocument } from './entities/kyc-document.entity';
 import { KycDocumentsService } from './kyc-documents.service';
 import { KycController } from './kyc.controller';
+import { QoreIdWebhookController } from './qoreid-webhook.controller';
 import { StorageModule } from '../storage/storage.module';
 import { UsersModule } from '../users/users.module';
 import { TokensModule } from '../tokens/tokens.module';
@@ -27,7 +28,7 @@ import { TokensModule } from '../tokens/tokens.module';
     UsersModule,
     TokensModule,
   ],
-  controllers: [KycController],
+  controllers: [KycController, QoreIdWebhookController],
   providers: [
     QoreIdTokenService,
     QoreIdSessionService,
