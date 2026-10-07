@@ -34,6 +34,8 @@ export interface AuthConfig {
       baseUrl: string;
       livenessClientId: string;
       livenessSecret: string;
+      // HMAC key QoreID signs webhooks with (x-verifyme-signature); blank = webhook disabled.
+      webhookSecret: string;
     };
   };
   internal: {
@@ -95,6 +97,7 @@ export default (): AuthConfig => ({
       // entitlements are per-project. Falls back to the main pair if unset.
       livenessClientId: process.env.QOREID_LIVENESS_CLIENT_ID ?? '',
       livenessSecret: process.env.QOREID_LIVENESS_SECRET ?? '',
+      webhookSecret: process.env.QOREID_WEBHOOK_SECRET ?? '',
     },
   },
   internal: {

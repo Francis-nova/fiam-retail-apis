@@ -14,7 +14,10 @@ import { AuthConfig } from './config/configuration';
 
 async function bootstrap() {
   initErrorTracking('auth');
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    // QoreID webhook signatures are computed over the exact raw bytes.
+    rawBody: true,
+  });
   hardenHttp(app);
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   app.useGlobalFilters(new HttpExceptionFilter());
