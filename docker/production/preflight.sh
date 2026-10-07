@@ -76,6 +76,11 @@ else
   echo "  skip  connection test (needs POSTGRES_HOST and a readable DB_SSL_CA_HOST)"
 fi
 
+echo "Object storage and off-box backups"
+case "${OBJECT_STORAGE_ENDPOINT:-}" in ""|minio) bad "OBJECT_STORAGE_ENDPOINT is empty/minio: KYC uploads would fail (the in-stack MinIO is scaled to 0)";; *) ok "OBJECT_STORAGE_ENDPOINT=$OBJECT_STORAGE_ENDPOINT";; esac
+need OBJECT_STORAGE_ACCESS_KEY; need OBJECT_STORAGE_SECRET_KEY; need OBJECT_STORAGE_BUCKET; need OBJECT_STORAGE_REGION
+need RCLONE_CONFIG_HETZNER_ACCESS_KEY_ID; need RCLONE_CONFIG_HETZNER_SECRET_ACCESS_KEY; need RCLONE_CONFIG_HETZNER_ENDPOINT
+
 echo "Environment separation"
 [ "${OBJECT_STORAGE_PREFIX:-}" = "fiam-production/" ] && ok "OBJECT_STORAGE_PREFIX=fiam-production/" || bad "OBJECT_STORAGE_PREFIX must be exactly fiam-production/ (shared bucket!)"
 case "${BACKUP_RCLONE_REMOTE:-}" in
