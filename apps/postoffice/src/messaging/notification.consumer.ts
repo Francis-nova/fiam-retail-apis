@@ -3,6 +3,7 @@ import { Ctx, EventPattern, Payload, RmqContext } from '@nestjs/microservices';
 import {
   NOTIFICATION_REQUESTED_PATTERN,
   NotificationChannel,
+  runWithMessageRequestId,
 } from '@app/common';
 import type { NotificationRequestedMessage } from '@app/common';
 import type { Channel, ConsumeMessage } from 'amqplib';
@@ -28,9 +29,18 @@ export class NotificationConsumer {
   ) {}
 
   @EventPattern(NOTIFICATION_REQUESTED_PATTERN)
-  async handle(
+  handle(
     @Payload() message: NotificationRequestedMessage,
     @Ctx() context: RmqContext,
+  ) {
+    return runWithMessageRequestId(context, () =>
+      this.process(message, context),
+    );
+  }
+
+  private async process(
+    message: NotificationRequestedMessage,
+    context: RmqContext,
   ) {
     const channel = context.getChannelRef() as Channel;
     const originalMsg = context.getMessage() as ConsumeMessage;

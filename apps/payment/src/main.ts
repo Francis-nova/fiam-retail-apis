@@ -1,4 +1,5 @@
 import { NestFactory } from '@nestjs/core';
+import { Logger as PinoLogger } from 'nestjs-pino';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { MicroserviceOptions, Transport } from '@nestjs/microservices';
@@ -7,6 +8,7 @@ import {
   HttpExceptionFilter,
   PAYMENT_ACCOUNT_PROVISIONING_QUEUE,
   initErrorTracking,
+  requestContextMiddleware,
 } from '@app/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { hardenHttp, swaggerEnabled } from '@app/common';
@@ -15,7 +17,11 @@ import { PaymentConfig } from './config/configuration';
 
 async function bootstrap() {
   initErrorTracking('payment');
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    bufferLogs: true,
+  });
+  app.useLogger(app.get(PinoLogger));
+  app.use(requestContextMiddleware);
   hardenHttp(app);
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   app.useGlobalFilters(new HttpExceptionFilter());

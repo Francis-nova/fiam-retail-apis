@@ -7,6 +7,7 @@ import { Repository } from 'typeorm';
 import {
   NOTIFICATION_REQUESTED_PATTERN,
   NotificationChannel,
+  withRequestId,
 } from '@app/common';
 import { AdminConfig } from '../config/configuration';
 import {
@@ -70,21 +71,24 @@ export class AlertsService {
       const target =
         [entry.resourceType, entry.resourceId].filter(Boolean).join(' ') || '—';
       for (const admin of admins) {
-        this.client.emit(NOTIFICATION_REQUESTED_PATTERN, {
-          messageId: randomUUID(),
-          channel: NotificationChannel.EMAIL,
-          recipient: admin.email,
-          template: 'staff-alert',
-          data: {
-            firstName: admin.fullName.split(' ')[0] || 'there',
-            title,
-            actor: entry.staffEmail ?? 'System',
-            target,
-            occurredAt: lagos(),
-            ipAddress: entry.ip ?? 'Unknown',
-          },
-          requestedAt: new Date().toISOString(),
-        });
+        this.client.emit(
+          NOTIFICATION_REQUESTED_PATTERN,
+          withRequestId({
+            messageId: randomUUID(),
+            channel: NotificationChannel.EMAIL,
+            recipient: admin.email,
+            template: 'staff-alert',
+            data: {
+              firstName: admin.fullName.split(' ')[0] || 'there',
+              title,
+              actor: entry.staffEmail ?? 'System',
+              target,
+              occurredAt: lagos(),
+              ipAddress: entry.ip ?? 'Unknown',
+            },
+            requestedAt: new Date().toISOString(),
+          }),
+        );
       }
     } catch (err) {
       this.logger.warn(`Could not send staff alert: ${String(err)}`);

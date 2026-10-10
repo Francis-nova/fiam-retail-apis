@@ -1,4 +1,5 @@
 import { Logger } from '@nestjs/common';
+import { runWithJobRequestId } from '@app/common';
 import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Job } from 'bullmq';
@@ -30,7 +31,11 @@ export class TransactionsProcessor extends WorkerHost {
     super();
   }
 
-  async process(job: Job<ProcessTransactionJobData>): Promise<void> {
+  process(job: Job<ProcessTransactionJobData>): Promise<void> {
+    return runWithJobRequestId(job, () => this.run(job));
+  }
+
+  private async run(job: Job<ProcessTransactionJobData>): Promise<void> {
     const { transactionId } = job.data;
     const transaction = await this.transactionsRepo.findOneBy({
       id: transactionId,
@@ -87,8 +92,12 @@ export class TransactionsProcessor extends WorkerHost {
   // fires once retries are exhausted, which is the actual "this
   // transaction failed for good" signal.
   @OnWorkerEvent('failed')
-  async onFailed(job: Job<ProcessTransactionJobData> | undefined) {
+  onFailed(job: Job<ProcessTransactionJobData> | undefined) {
     if (!job) return;
+    return runWithJobRequestId(job, () => this.handleFailed(job));
+  }
+
+  private async handleFailed(job: Job<ProcessTransactionJobData>) {
     const maxAttempts = job.opts.attempts ?? 1;
     if (job.attemptsMade < maxAttempts) {
       return;

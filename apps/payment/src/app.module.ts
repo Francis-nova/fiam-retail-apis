@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { RateLimitModule } from '@app/common';
+import { RateLimitModule, AppLoggerModule } from '@app/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { BullModule } from '@nestjs/bullmq';
 import { AppController } from './app.controller';
@@ -17,6 +17,7 @@ import { InternalModule } from './internal/internal.module';
 
 @Module({
   imports: [
+    AppLoggerModule.forRoot('payment'),
     RateLimitModule.forRoot('payment'),
     ConfigModule.forRoot({
       isGlobal: true,

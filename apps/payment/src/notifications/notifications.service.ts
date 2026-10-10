@@ -6,6 +6,7 @@ import {
   NOTIFICATION_REQUESTED_PATTERN,
   NotificationChannel,
   PushTemplate,
+  withRequestId,
 } from '@app/common';
 import { POSTOFFICE_NOTIFICATION_CLIENT } from './postoffice-notification-client.token';
 import { PaymentConfig } from '../config/configuration';
@@ -106,16 +107,19 @@ export class NotificationsService {
       const wallet = await this.walletsService.findById(transaction.walletId);
       if (!wallet) return;
 
-      this.client.emit(NOTIFICATION_REQUESTED_PATTERN, {
-        messageId: randomUUID(),
-        channel: NotificationChannel.PUSH,
-        // For push, the recipient is the customer's user id — the mobile app
-        // registers each device under it.
-        recipient: wallet.userId,
-        template: TEMPLATE_BY_EVENT[event],
-        data: { amount: transaction.amount, transactionId: transaction.id },
-        requestedAt: new Date().toISOString(),
-      });
+      this.client.emit(
+        NOTIFICATION_REQUESTED_PATTERN,
+        withRequestId({
+          messageId: randomUUID(),
+          channel: NotificationChannel.PUSH,
+          // For push, the recipient is the customer's user id — the mobile app
+          // registers each device under it.
+          recipient: wallet.userId,
+          template: TEMPLATE_BY_EVENT[event],
+          data: { amount: transaction.amount, transactionId: transaction.id },
+          requestedAt: new Date().toISOString(),
+        }),
+      );
 
       // Independent of the push above: an email problem never affects it.
       await this.sendReceiptEmail(transaction, wallet.userId, event);
@@ -147,24 +151,27 @@ export class NotificationsService {
       const occurred =
         transaction.occurredAt ?? transaction.createdAt ?? new Date();
 
-      this.client.emit(NOTIFICATION_REQUESTED_PATTERN, {
-        messageId: randomUUID(),
-        channel: NotificationChannel.EMAIL,
-        recipient: contact.email,
-        template: RECEIPT_TEMPLATE,
-        data: {
-          name: contact.firstName,
-          firstName: contact.firstName,
-          direction,
-          amount: naira(transaction.amount),
-          counterparty,
-          reference: transaction.reference ?? transaction.id,
-          status: 'Successful',
-          ...(adjustment ? { adjustment: 'true' } : {}),
-          occurredAt: lagosDate(new Date(occurred)),
-        },
-        requestedAt: new Date().toISOString(),
-      });
+      this.client.emit(
+        NOTIFICATION_REQUESTED_PATTERN,
+        withRequestId({
+          messageId: randomUUID(),
+          channel: NotificationChannel.EMAIL,
+          recipient: contact.email,
+          template: RECEIPT_TEMPLATE,
+          data: {
+            name: contact.firstName,
+            firstName: contact.firstName,
+            direction,
+            amount: naira(transaction.amount),
+            counterparty,
+            reference: transaction.reference ?? transaction.id,
+            status: 'Successful',
+            ...(adjustment ? { adjustment: 'true' } : {}),
+            occurredAt: lagosDate(new Date(occurred)),
+          },
+          requestedAt: new Date().toISOString(),
+        }),
+      );
     } catch (err) {
       this.logger.warn(
         `Could not queue receipt email for ${transaction.id}: ${(err as Error).message}`,

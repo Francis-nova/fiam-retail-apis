@@ -4,7 +4,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Queue } from 'bullmq';
 import { Repository } from 'typeorm';
 import Decimal from 'decimal.js';
-import { CurrencyCode } from '@app/common';
+import { CurrencyCode, withJobRequestId } from '@app/common';
 import { AddressService } from '../wallets/address.service';
 import { WalletsService } from '../wallets/wallets.service';
 import { PaymentProviderKey } from '../wallets/entities/address.entity';
@@ -103,7 +103,7 @@ export class TransactionsService {
 
     await this.queue.add(
       PROCESS_TRANSACTION_JOB,
-      { transactionId },
+      withJobRequestId({ transactionId }),
       { attempts: 5, backoff: { type: 'exponential', delay: 2000 } },
     );
 

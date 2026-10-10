@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AppLoggerModule } from '@app/common';
 import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
 import configuration from './config/configuration';
@@ -9,6 +10,7 @@ import { EmailModule } from './email/email.module';
 
 @Module({
   imports: [
+    AppLoggerModule.forRoot('postoffice'),
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: 'apps/postoffice/.env',

@@ -14,7 +14,7 @@ import { Queue } from 'bullmq';
 import { DataSource, EntityManager, Repository } from 'typeorm';
 import Decimal from 'decimal.js';
 import { PaymentProviderKey } from '../wallets/entities/address.entity';
-import { CurrencyCode } from '@app/common';
+import { CurrencyCode, withJobRequestId } from '@app/common';
 import { PaymentConfig } from '../config/configuration';
 import { WalletsService } from '../wallets/wallets.service';
 import { AddressService } from '../wallets/address.service';
@@ -469,7 +469,7 @@ export class PayoutsService {
       // support, not auto-resolved).
       await this.queue.add(
         PROCESS_PAYOUT_STATUS_QUERY_JOB,
-        { transactionId: transaction.id },
+        withJobRequestId({ transactionId: transaction.id }),
         { attempts: 10, backoff: { type: 'exponential', delay: 30_000 } },
       );
     }
