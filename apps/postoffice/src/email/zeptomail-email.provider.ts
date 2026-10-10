@@ -21,10 +21,8 @@ export class ZeptomailEmailProvider implements EmailProvider {
   ) {}
 
   async send(message: EmailMessage): Promise<void> {
-    const { fromAddress, fromName, zeptomail } = this.configService.get(
-      'email',
-      { infer: true },
-    );
+    const { fromAddress, fromName, envLabel, zeptomail } =
+      this.configService.get('email', { infer: true });
 
     if (!zeptomail.token) {
       throw new ServiceUnavailableException(
@@ -48,7 +46,9 @@ export class ZeptomailEmailProvider implements EmailProvider {
             },
           },
         ],
-        subject: message.subject,
+        subject: envLabel
+          ? `[${envLabel}] ${message.subject}`
+          : message.subject,
         htmlbody: message.html,
       });
     } catch (err) {

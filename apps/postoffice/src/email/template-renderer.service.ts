@@ -1,5 +1,7 @@
 import { join } from 'path';
 import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { PostofficeConfig } from '../config/configuration';
 import * as pug from 'pug';
 
 const FIAM_LOGO_URL =
@@ -19,10 +21,15 @@ export class TemplateRendererService {
     'dist/apps/postoffice/email/templates',
   );
 
+  constructor(
+    private readonly configService: ConfigService<PostofficeConfig, true>,
+  ) {}
+
   render(templateName: string, locals: Record<string, unknown>): string {
     return pug.renderFile(join(this.templatesDir, `${templateName}.pug`), {
       logoUrl: FIAM_LOGO_URL,
       year: new Date().getFullYear(),
+      envLabel: this.configService.get('email', { infer: true }).envLabel,
       ...locals,
       // Compiled functions are cached by filename — the file is only read
       // and compiled once per process, not on every send.
