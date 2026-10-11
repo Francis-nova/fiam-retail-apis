@@ -45,6 +45,22 @@ export const NIN_LIVENESS_WIDGET_HTML = `<!DOCTYPE html>
   var nin = params.get('nin');
   var firstname = params.get('firstname');
   var lastname = params.get('lastname');
+  // When opened in the system browser (not the in-app WebView) there is no
+  // ReactNativeWebView bridge, so results go back to the app by redirecting to
+  // its deep link. Only our own scheme is honoured, so this can't be turned
+  // into an open redirect.
+  var returnUrl = params.get('return');
+  if (returnUrl && returnUrl.indexOf('fiammobile://') !== 0) returnUrl = null;
+  var finished = false;
+  function returnToApp(status, message) {
+    if (!returnUrl || finished) return;
+    finished = true;
+    var sep = returnUrl.indexOf('?') === -1 ? '?' : '&';
+    var target = returnUrl + sep + 'status=' + encodeURIComponent(status);
+    if (message) target += '&message=' + encodeURIComponent(String(message).slice(0, 200));
+    setStatus(status === 'success' ? 'Verification complete. Returning to the app…' : 'Returning to the app…');
+    window.location.href = target;
+  }
 
   function setStatus(text) {
     var el = document.getElementById('status');
@@ -66,13 +82,16 @@ export const NIN_LIVENESS_WIDGET_HTML = `<!DOCTYPE html>
         },
         submittedEventTrigger: function (e) {
           post('success', e);
+          returnToApp('success');
         },
         errorEventTrigger: function (e) {
           debug('sdk error ' + JSON.stringify(e));
           post('error', e);
+          returnToApp('error', e && e.message ? e.message : '');
         },
         closedEventTrigger: function (e) {
           post('closed', e);
+          returnToApp('closed');
         },
       });
     } catch (e) {
