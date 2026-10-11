@@ -1,4 +1,5 @@
 import { NestFactory } from '@nestjs/core';
+import { Logger as PinoLogger } from 'nestjs-pino';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
@@ -9,15 +10,19 @@ import {
   hardenHttp,
   swaggerEnabled,
   initErrorTracking,
+  requestContextMiddleware,
 } from '@app/common';
 import { AuthConfig } from './config/configuration';
 
 async function bootstrap() {
   initErrorTracking('auth');
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    bufferLogs: true,
     // QoreID webhook signatures are computed over the exact raw bytes.
     rawBody: true,
   });
+  app.useLogger(app.get(PinoLogger));
+  app.use(requestContextMiddleware);
   hardenHttp(app);
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   app.useGlobalFilters(new HttpExceptionFilter());

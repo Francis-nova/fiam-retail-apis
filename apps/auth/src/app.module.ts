@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { RateLimitModule } from '@app/common';
+import { RateLimitModule, AppLoggerModule } from '@app/common';
 import { ConfigModule } from '@nestjs/config';
 import configuration from './config/configuration';
 import { validate } from './config/env.validation';
@@ -16,6 +16,7 @@ import { HealthController } from './health/health.controller';
 
 @Module({
   imports: [
+    AppLoggerModule.forRoot('auth'),
     RateLimitModule.forRoot('auth'),
     ConfigModule.forRoot({
       isGlobal: true,

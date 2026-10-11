@@ -5,6 +5,7 @@ import {
   NOTIFICATION_REQUESTED_PATTERN,
   NotificationChannel,
   PushTemplate,
+  withRequestId,
 } from '@app/common';
 import { POSTOFFICE_NOTIFICATION_CLIENT } from './postoffice-notification-client.token';
 
@@ -20,15 +21,18 @@ export class NotificationPublisher {
   ) {}
 
   requestSms(recipient: string, text: string): void {
-    this.client.emit(NOTIFICATION_REQUESTED_PATTERN, {
-      messageId: randomUUID(),
-      channel: NotificationChannel.SMS,
-      recipient,
-      // No template renderer yet — postoffice sends `data.message` as-is.
-      template: 'raw-text',
-      data: { message: text },
-      requestedAt: new Date().toISOString(),
-    });
+    this.client.emit(
+      NOTIFICATION_REQUESTED_PATTERN,
+      withRequestId({
+        messageId: randomUUID(),
+        channel: NotificationChannel.SMS,
+        recipient,
+        // No template renderer yet — postoffice sends `data.message` as-is.
+        template: 'raw-text',
+        data: { message: text },
+        requestedAt: new Date().toISOString(),
+      }),
+    );
   }
 
   // Push to every device the customer has registered (recipient = user id).
@@ -37,14 +41,17 @@ export class NotificationPublisher {
     template: PushTemplate,
     data: Record<string, string> = {},
   ): void {
-    this.client.emit(NOTIFICATION_REQUESTED_PATTERN, {
-      messageId: randomUUID(),
-      channel: NotificationChannel.PUSH,
-      recipient: userId,
-      template,
-      data,
-      requestedAt: new Date().toISOString(),
-    });
+    this.client.emit(
+      NOTIFICATION_REQUESTED_PATTERN,
+      withRequestId({
+        messageId: randomUUID(),
+        channel: NotificationChannel.PUSH,
+        recipient: userId,
+        template,
+        data,
+        requestedAt: new Date().toISOString(),
+      }),
+    );
   }
 
   // Templated email — postoffice owns the copy, layout and subject.
@@ -53,13 +60,16 @@ export class NotificationPublisher {
     template: string,
     data: Record<string, string>,
   ): void {
-    this.client.emit(NOTIFICATION_REQUESTED_PATTERN, {
-      messageId: randomUUID(),
-      channel: NotificationChannel.EMAIL,
-      recipient,
-      template,
-      data,
-      requestedAt: new Date().toISOString(),
-    });
+    this.client.emit(
+      NOTIFICATION_REQUESTED_PATTERN,
+      withRequestId({
+        messageId: randomUUID(),
+        channel: NotificationChannel.EMAIL,
+        recipient,
+        template,
+        data,
+        requestedAt: new Date().toISOString(),
+      }),
+    );
   }
 }

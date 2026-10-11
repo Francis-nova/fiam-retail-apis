@@ -22,6 +22,9 @@ export interface PostofficeConfig {
     provider: string;
     fromAddress: string;
     fromName: string;
+    // Non-empty (e.g. 'TEST') on non-production deployments: prefixes the
+    // subject and adds a banner so test mail can't be mistaken for real mail.
+    envLabel: string;
     zeptomail: {
       token: string;
       baseUrl: string;
@@ -53,6 +56,7 @@ export default (): PostofficeConfig => ({
     provider: process.env.EMAIL_PROVIDER ?? 'zeptomail',
     fromAddress: process.env.EMAIL_FROM_ADDRESS ?? 'noreply@usefiam.com',
     fromName: process.env.EMAIL_FROM_NAME ?? 'Fiam',
+    envLabel: (process.env.EMAIL_ENV_LABEL ?? '').trim(),
     zeptomail: {
       token: process.env.ZEPTOMAIL_TOKEN ?? '',
       baseUrl: process.env.ZEPTOMAIL_BASE_URL ?? 'api.zeptomail.com/',

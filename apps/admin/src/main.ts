@@ -1,4 +1,5 @@
 import { NestFactory } from '@nestjs/core';
+import { Logger as PinoLogger } from 'nestjs-pino';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
@@ -9,13 +10,18 @@ import {
   hardenHttp,
   swaggerEnabled,
   initErrorTracking,
+  requestContextMiddleware,
 } from '@app/common';
 import { AdminConfig } from './config/configuration';
 import { ipAllowlist, parseAllowedIps } from './common/ip-allowlist';
 
 async function bootstrap() {
   initErrorTracking('admin');
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    bufferLogs: true,
+  });
+  app.useLogger(app.get(PinoLogger));
+  app.use(requestContextMiddleware);
   hardenHttp(app);
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   app.useGlobalFilters(new HttpExceptionFilter());

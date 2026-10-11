@@ -1,6 +1,9 @@
 import { Controller, Logger } from '@nestjs/common';
 import { Ctx, EventPattern, Payload, RmqContext } from '@nestjs/microservices';
-import { ACCOUNT_PROVISIONING_REQUESTED_PATTERN } from '@app/common';
+import {
+  ACCOUNT_PROVISIONING_REQUESTED_PATTERN,
+  runWithMessageRequestId,
+} from '@app/common';
 import type { AccountProvisioningRequestedMessage } from '@app/common';
 import type { Channel, ConsumeMessage } from 'amqplib';
 import { AddressService } from '../wallets/address.service';
@@ -12,9 +15,18 @@ export class AccountProvisioningConsumer {
   constructor(private readonly addressService: AddressService) {}
 
   @EventPattern(ACCOUNT_PROVISIONING_REQUESTED_PATTERN)
-  async handle(
+  handle(
     @Payload() message: AccountProvisioningRequestedMessage,
     @Ctx() context: RmqContext,
+  ) {
+    return runWithMessageRequestId(context, () =>
+      this.process(message, context),
+    );
+  }
+
+  private async process(
+    message: AccountProvisioningRequestedMessage,
+    context: RmqContext,
   ) {
     // RmqContext types these as `any`/`Record<string, any>` — narrow to
     // amqplib's real types so ack/nack are type-checked.

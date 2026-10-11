@@ -7,6 +7,8 @@ html(lang="en")
     meta(name="supported-color-schemes" content="light")
     title= subject
   body(style="margin:0; padding:0; background-color:#F1F1F1; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;")
+    if envLabel
+      div(style="background-color:#FFF4CE; color:#7A5B00; text-align:center; font-size:12px; font-weight:700; letter-spacing:1px; padding:10px 16px;")= envLabel + ' ENVIRONMENT — NOT A REAL MESSAGE'
     table(role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#F1F1F1;")
       tr
         td(align="center" style="padding:48px 16px;")

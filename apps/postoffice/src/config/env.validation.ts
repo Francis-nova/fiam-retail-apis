@@ -13,6 +13,7 @@ interface EnvVars {
   EMAIL_PROVIDER: 'zeptomail';
   EMAIL_FROM_ADDRESS: string;
   EMAIL_FROM_NAME: string;
+  EMAIL_ENV_LABEL: string;
   ZEPTOMAIL_TOKEN: string;
   ZEPTOMAIL_BASE_URL: string;
   ONESIGNAL_APP_ID: string;
@@ -40,6 +41,7 @@ export const envSchema = Joi.object<EnvVars>({
   EMAIL_PROVIDER: Joi.string().valid('zeptomail').default('zeptomail'),
   EMAIL_FROM_ADDRESS: Joi.string().email().default('noreply@usefiam.com'),
   EMAIL_FROM_NAME: Joi.string().default('Fiam'),
+  EMAIL_ENV_LABEL: Joi.string().allow('').default(''),
   // Not .uri() — ZeptoMail's own SDK expects a bare host (+ optional path),
   // e.g. "api.zeptomail.com/", and prepends the scheme itself.
   ZEPTOMAIL_TOKEN: Joi.string().allow('').default(''),

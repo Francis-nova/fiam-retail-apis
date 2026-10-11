@@ -1,4 +1,5 @@
 import { Logger } from '@nestjs/common';
+import { runWithJobRequestId } from '@app/common';
 import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 import { PayoutsService } from './payouts.service';
@@ -15,7 +16,11 @@ export class PayoutStatusQueryProcessor extends WorkerHost {
     super();
   }
 
-  async process(job: Job<PayoutStatusQueryJobData>): Promise<void> {
+  process(job: Job<PayoutStatusQueryJobData>): Promise<void> {
+    return runWithJobRequestId(job, () => this.run(job));
+  }
+
+  private async run(job: Job<PayoutStatusQueryJobData>): Promise<void> {
     const { transactionId } = job.data;
     const outcome = await this.payoutsService.syncPayoutStatus(transactionId);
     if (outcome === 'NOT_FOUND') {
@@ -40,6 +45,10 @@ export class PayoutStatusQueryProcessor extends WorkerHost {
   @OnWorkerEvent('failed')
   onFailed(job: Job<PayoutStatusQueryJobData> | undefined) {
     if (!job) return;
+    return runWithJobRequestId(job, () => this.handleFailed(job));
+  }
+
+  private handleFailed(job: Job<PayoutStatusQueryJobData>) {
     const maxAttempts = job.opts.attempts ?? 1;
     if (job.attemptsMade < maxAttempts) {
       return;

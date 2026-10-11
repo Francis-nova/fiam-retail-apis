@@ -1,15 +1,22 @@
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import { Logger as PinoLogger } from 'nestjs-pino';
 import { ConfigService } from '@nestjs/config';
 import { MicroserviceOptions, Transport } from '@nestjs/microservices';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import { POSTOFFICE_NOTIFICATION_QUEUE, initErrorTracking } from '@app/common';
+import {
+  POSTOFFICE_NOTIFICATION_QUEUE,
+  initErrorTracking,
+  requestContextMiddleware,
+} from '@app/common';
 import { AppModule } from './app.module';
 import { PostofficeConfig } from './config/configuration';
 
 async function bootstrap() {
   initErrorTracking('postoffice');
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  app.useLogger(app.get(PinoLogger));
+  app.use(requestContextMiddleware);
 
   const swaggerConfig = new DocumentBuilder()
     .setTitle('Fiam Postoffice API')

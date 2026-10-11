@@ -214,6 +214,9 @@ services:
       EMAIL_PROVIDER: zeptomail
       EMAIL_FROM_ADDRESS: ${EMAIL_FROM_ADDRESS:-noreply@usefiam.com}
       EMAIL_FROM_NAME: ${EMAIL_FROM_NAME:-Fiam}
+      # Blank in production. On staging set EMAIL_ENV_LABEL=TEST in docker/.env
+      # to tag every email's subject and body as test mail.
+      EMAIL_ENV_LABEL: ${EMAIL_ENV_LABEL:-}
       ZEPTOMAIL_TOKEN: ${ZEPTOMAIL_TOKEN:-}
       ZEPTOMAIL_BASE_URL: ${ZEPTOMAIL_BASE_URL:-api.zeptomail.com/}
       ONESIGNAL_APP_ID: ${ONESIGNAL_APP_ID:-}

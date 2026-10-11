@@ -3,6 +3,7 @@ import { ClientProxy } from '@nestjs/microservices';
 import {
   ACCOUNT_PROVISIONING_REQUESTED_PATTERN,
   AccountProvisioningRequestedMessage,
+  withRequestId,
 } from '@app/common';
 import { PAYMENT_PROVISIONING_CLIENT } from './payment-provisioning-client.token';
 
@@ -20,6 +21,9 @@ export class PaymentProvisioningPublisher {
   requestNgnAccountProvisioning(
     message: AccountProvisioningRequestedMessage,
   ): void {
-    this.client.emit(ACCOUNT_PROVISIONING_REQUESTED_PATTERN, message);
+    this.client.emit(
+      ACCOUNT_PROVISIONING_REQUESTED_PATTERN,
+      withRequestId(message),
+    );
   }
 }
