@@ -64,7 +64,15 @@ export class QoreIdSessionService {
           'Content-Type': 'application/json',
           Authorization: `Basic ${basic}`,
         },
-        body: JSON.stringify({ type: 'collection', productCode, reference }),
+        // customerReference mirrors reference: the native SDK has no launch-time
+        // customerReference input and its form sends an empty one otherwise,
+        // which QoreID rejects ("customerReference should not be empty").
+        body: JSON.stringify({
+          type: 'collection',
+          productCode,
+          reference,
+          customerReference: reference,
+        }),
         signal: AbortSignal.timeout(QOREID_FETCH_TIMEOUT_MS),
       });
     } catch (err) {
