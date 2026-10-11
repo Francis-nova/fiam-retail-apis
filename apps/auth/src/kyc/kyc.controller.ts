@@ -87,6 +87,30 @@ export class KycController {
   // ours.
   @Get('nin/liveness-widget')
   ninLivenessWidget(@Res() res: Response) {
+    // helmet's default CSP (script-src 'self') blocks this page's inline
+    // script and QoreID's SDK, leaving the WebView stuck on "Loading
+    // verification…". Replace it for this route only with one that allows
+    // exactly that: our inline script, https-only third-party scripts/frames/
+    // connections (the SDK's own hosts), and wasm/workers for its liveness
+    // engine. Everything else stays locked down.
+    res.setHeader(
+      'Content-Security-Policy',
+      [
+        "default-src 'none'",
+        "script-src 'unsafe-inline' 'wasm-unsafe-eval' https:",
+        "style-src 'unsafe-inline' https:",
+        'connect-src https: wss: data: blob:',
+        'frame-src https:',
+        'img-src https: data: blob:',
+        'media-src https: data: blob:',
+        'font-src https: data:',
+        "worker-src 'self' blob: https:",
+        "base-uri 'none'",
+        "form-action 'none'",
+        "object-src 'none'",
+        "frame-ancestors 'none'",
+      ].join('; '),
+    );
     res.type('html').send(NIN_LIVENESS_WIDGET_HTML);
   }
 
