@@ -91,6 +91,9 @@ export const NIN_LIVENESS_WIDGET_HTML = `<!DOCTYPE html>
   debugEl.style.cssText = 'position:fixed;left:0;right:0;bottom:0;max-height:35%;overflow:hidden;z-index:2147483647;background:rgba(0,0,0,.8);color:#7CFC00;font:10px/1.3 monospace;padding:4px 6px;pointer-events:none;word-break:break-all;';
   function debug(line) {
     debugLines.push(String(line).slice(0, 220));
+    // Also forward to the app, which writes it to the device log (adb logcat,
+    // tag ReactNativeJS) so it survives the on-screen strip being covered.
+    post('log', { line: String(line).slice(0, 220) });
     if (debugLines.length > 14) debugLines.shift();
     debugEl.textContent = debugLines.join(String.fromCharCode(10));
     debugEl.style.whiteSpace = 'pre-wrap';
