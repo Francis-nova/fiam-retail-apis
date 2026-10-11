@@ -92,7 +92,7 @@ export const NIN_LIVENESS_WIDGET_HTML = `<!DOCTYPE html>
   function debug(line) {
     debugLines.push(String(line).slice(0, 220));
     if (debugLines.length > 14) debugLines.shift();
-    debugEl.textContent = debugLines.join('\n');
+    debugEl.textContent = debugLines.join(String.fromCharCode(10));
     debugEl.style.whiteSpace = 'pre-wrap';
     if (!debugEl.parentNode && document.body) document.body.appendChild(debugEl);
   }
