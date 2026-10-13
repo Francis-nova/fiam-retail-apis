@@ -172,6 +172,9 @@ export class KycDocumentsService {
       sdkSessionToken: session.sdkSessionToken,
       firstName: user.firstName,
       lastName: user.lastName,
+      // QoreID's SDK validates (and otherwise asks the user for) the applicant
+      // phone; it wants E.164 with a leading "+", whereas we store 234XXXXXXXXXX.
+      phone: user.phone ? `+${user.phone.replace(/\D/g, '')}` : undefined,
     };
   }
 
