@@ -45,6 +45,7 @@ export const NIN_LIVENESS_WIDGET_HTML = `<!DOCTYPE html>
   var nin = params.get('nin');
   var firstname = params.get('firstname');
   var lastname = params.get('lastname');
+  var phone = params.get('phone');
   // When opened in the system browser (not the in-app WebView) there is no
   // ReactNativeWebView bridge, so results go back to the app by redirecting to
   // its deep link. Only our own scheme is honoured, so this can't be turned
@@ -74,7 +75,9 @@ export const NIN_LIVENESS_WIDGET_HTML = `<!DOCTYPE html>
         token: token,
         customerReference: reference,
         identityData: { idType: 'NIN', idNumber: nin },
-        applicantData: { firstname: firstname, lastname: lastname },
+        applicantData: phone
+          ? { firstname: firstname, lastname: lastname, phone: phone }
+          : { firstname: firstname, lastname: lastname },
         initializedEventTrigger: function (e) {
           setStatus('');
           debug('initialized event');
