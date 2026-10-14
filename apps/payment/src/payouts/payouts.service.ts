@@ -30,6 +30,7 @@ import type {
 } from '../providers/payment-provider.interface';
 import {
   Transaction,
+  TransactionKind,
   TransactionStatus,
   TransactionType,
 } from '../transactions/entities/transaction.entity';
@@ -214,6 +215,7 @@ export class PayoutsService {
           walletId: wallet.id,
           currency: CurrencyCode.NGN,
           type: TransactionType.DEBIT,
+          kind: TransactionKind.PAYOUT,
           status: TransactionStatus.PROCESSING,
           provider: provider.key,
           accountNumber: address.providerAccountNumber,
@@ -530,6 +532,7 @@ export class PayoutsService {
           walletId: transaction.walletId,
           currency: transaction.currency,
           type: TransactionType.CREDIT,
+          kind: TransactionKind.REVERSAL,
           status: TransactionStatus.SUCCESSFUL,
           provider: transaction.provider,
           accountNumber: transaction.accountNumber,

@@ -10,6 +10,7 @@ import { WalletsService } from '../wallets/wallets.service';
 import { PaymentProviderKey } from '../wallets/entities/address.entity';
 import {
   Transaction,
+  TransactionKind,
   TransactionStatus,
   TransactionType,
 } from './entities/transaction.entity';
@@ -67,6 +68,7 @@ export class TransactionsService {
         walletId: wallet?.id ?? null,
         currency: input.currency,
         type: TransactionType.CREDIT,
+        kind: TransactionKind.DEPOSIT,
         status: wallet
           ? TransactionStatus.PENDING
           : TransactionStatus.UNMATCHED,

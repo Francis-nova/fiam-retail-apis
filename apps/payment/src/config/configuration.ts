@@ -35,6 +35,9 @@ export interface PaymentConfig {
   vfd: {
     authBaseUrl: string;
     walletBaseUrl: string;
+    // Bills payment API lives on its own path under the same host and
+    // shares the wallet API's AccessToken.
+    billsBaseUrl: string;
     consumerKey: string;
     consumerSecret: string;
     webhookAuthToken: string;
@@ -83,6 +86,9 @@ export default (): PaymentConfig => ({
     walletBaseUrl:
       process.env.VFD_WALLET_BASE_URL ??
       'https://api-devapps.vfdbank.systems/vtech-wallet/api/v2/wallet2',
+    billsBaseUrl:
+      process.env.VFD_BILLS_BASE_URL ??
+      'https://api-devapps.vfdbank.systems/vtech-bills/api/v2/billspaymentstore',
     consumerKey: process.env.VFD_CONSUMER_KEY ?? '',
     consumerSecret: process.env.VFD_CONSUMER_SECRET ?? '',
     webhookAuthToken: process.env.VFD_WEBHOOK_AUTH_TOKEN ?? '',

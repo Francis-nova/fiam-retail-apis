@@ -46,6 +46,10 @@ function parseDate(raw: string | undefined): Date | undefined {
 export interface TransactionResponse {
   id: string;
   type: string;
+  // DEPOSIT | PAYOUT | BILL_PAYMENT | REVERSAL | ADJUSTMENT
+  kind: string;
+  // For BILL_PAYMENT: AIRTIME | DATA | CABLE_TV | UTILITY | INTERNET | BETTING | OTHER
+  billType: string | null;
   status: string;
   currency: string;
   amount: string;
@@ -63,6 +67,8 @@ export interface TransactionResponse {
   counterpartyName: string | null;
   counterpartyAccountNumber: string | null;
   counterpartyBankName: string | null;
+  // Present only for bill payments; includes the utility token once issued.
+  bill: Transaction['bill'];
   occurredAt: string | null;
   verifiedAt: string | null;
   createdAt: string;
@@ -73,7 +79,10 @@ function toResponse(transaction: Transaction): TransactionResponse {
   let counterpartyAccountNumber: string | null = null;
   let counterpartyBankName: string | null = null;
 
-  if (transaction.type === TransactionType.DEBIT) {
+  if (transaction.bill) {
+    counterpartyName = transaction.bill.billerName;
+    counterpartyAccountNumber = transaction.bill.customerId;
+  } else if (transaction.type === TransactionType.DEBIT) {
     counterpartyName = transaction.beneficiary?.accountName ?? null;
     counterpartyAccountNumber = transaction.beneficiary?.accountNumber ?? null;
     counterpartyBankName = transaction.beneficiary?.bankName ?? null;
@@ -94,6 +103,8 @@ function toResponse(transaction: Transaction): TransactionResponse {
   return {
     id: transaction.id,
     type: transaction.type,
+    kind: transaction.kind,
+    billType: transaction.billType,
     status: transaction.status,
     currency: transaction.currency,
     amount: transaction.amount,
@@ -106,6 +117,7 @@ function toResponse(transaction: Transaction): TransactionResponse {
     counterpartyName,
     counterpartyAccountNumber,
     counterpartyBankName,
+    bill: transaction.bill ?? null,
     occurredAt: transaction.occurredAt?.toISOString() ?? null,
     verifiedAt: transaction.verifiedAt?.toISOString() ?? null,
     createdAt: transaction.createdAt.toISOString(),

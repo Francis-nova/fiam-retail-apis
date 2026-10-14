@@ -13,6 +13,7 @@ import { TransactionsModule } from './transactions/transactions.module';
 import { BanksModule } from './banks/banks.module';
 import { BeneficiariesModule } from './beneficiaries/beneficiaries.module';
 import { PayoutsModule } from './payouts/payouts.module';
+import { BillsModule } from './bills/bills.module';
 import { InternalModule } from './internal/internal.module';
 
 @Module({
@@ -42,6 +43,7 @@ import { InternalModule } from './internal/internal.module';
     BanksModule,
     BeneficiariesModule,
     PayoutsModule,
+    BillsModule,
     InternalModule,
   ],
   controllers: [AppController],

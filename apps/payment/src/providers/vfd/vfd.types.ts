@@ -97,3 +97,54 @@ export interface VfdTransactionStatusResponse {
     transactionType?: string;
   };
 }
+
+// Bills payment API (…/vtech-bills/api/v2/billspaymentstore).
+export interface VfdBillCategoryResponse {
+  status?: string;
+  message?: string;
+  data?: { category?: string }[];
+}
+
+export interface VfdBillerListResponse {
+  status?: string;
+  message?: string;
+  data?: {
+    id?: string;
+    name?: string;
+    division?: string;
+    product?: string;
+    category?: string;
+    convenienceFee?: string | number | null;
+  }[];
+}
+
+export interface VfdBillerItemsResponse {
+  status?: string;
+  message?: string;
+  data?: {
+    paymentitems?: {
+      paymentitemname?: string;
+      paymentCode?: string;
+      amount?: string | number | null;
+      isAmountFixed?: string | boolean | null;
+      itemFee?: string | number | null;
+      [key: string]: unknown;
+    }[];
+  };
+}
+
+export interface VfdBillPayResponse {
+  status?: string;
+  message?: string;
+  data?: { reference?: string; token?: string };
+}
+
+export interface VfdBillStatusResponse {
+  status?: string;
+  message?: string;
+  data?: {
+    transactionStatus?: string;
+    amount?: string;
+    token?: string;
+  };
+}
