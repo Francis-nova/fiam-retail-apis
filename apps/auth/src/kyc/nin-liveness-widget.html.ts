@@ -70,7 +70,6 @@ export const NIN_LIVENESS_WIDGET_HTML = `<!DOCTYPE html>
 
   function startSdk() {
     try {
-      debug('calling QoreIdSDK.init');
       window.QoreIdSDK.init({
         token: token,
         customerReference: reference,
@@ -80,7 +79,6 @@ export const NIN_LIVENESS_WIDGET_HTML = `<!DOCTYPE html>
           : { firstname: firstname, lastname: lastname },
         initializedEventTrigger: function (e) {
           setStatus('');
-          debug('initialized event');
           post('initialized', e);
         },
         submittedEventTrigger: function (e) {
@@ -88,7 +86,6 @@ export const NIN_LIVENESS_WIDGET_HTML = `<!DOCTYPE html>
           returnToApp('success');
         },
         errorEventTrigger: function (e) {
-          debug('sdk error ' + JSON.stringify(e));
           post('error', e);
           returnToApp('error', e && e.message ? e.message : '');
         },
@@ -103,45 +100,7 @@ export const NIN_LIVENESS_WIDGET_HTML = `<!DOCTYPE html>
     }
   }
 
-  // TEMPORARY on-screen diagnostics while the "Securing Camera Feed" hang is
-  // investigated: the SDK renders in a cross-origin iframe we can't inspect,
-  // so surface everything the parent page *can* see (SDK postMessage events,
-  // console errors/warnings, uncaught errors, CSP violations) in a strip above
-  // it. Remove once liveness works end to end.
-  var debugLines = [];
-  var debugEl = document.createElement('div');
-  debugEl.style.cssText = 'position:fixed;left:0;right:0;bottom:0;max-height:35%;overflow:hidden;z-index:2147483647;background:rgba(0,0,0,.8);color:#7CFC00;font:10px/1.3 monospace;padding:4px 6px;pointer-events:none;word-break:break-all;';
-  function debug(line) {
-    debugLines.push(String(line).slice(0, 220));
-    // Also forward to the app, which writes it to the device log (adb logcat,
-    // tag ReactNativeJS) so it survives the on-screen strip being covered.
-    post('log', { line: String(line).slice(0, 220) });
-    if (debugLines.length > 14) debugLines.shift();
-    debugEl.textContent = debugLines.join(String.fromCharCode(10));
-    debugEl.style.whiteSpace = 'pre-wrap';
-    if (!debugEl.parentNode && document.body) document.body.appendChild(debugEl);
-  }
-  window.addEventListener('message', function (e) {
-    var d;
-    try { d = typeof e.data === 'string' ? e.data : JSON.stringify(e.data); } catch (_) { d = '[unserializable]'; }
-    debug('msg ' + e.origin + ' ' + d);
-  });
-  document.addEventListener('securitypolicyviolation', function (e) {
-    debug('CSP ' + e.violatedDirective + ' blocked ' + e.blockedURI);
-  });
-  window.addEventListener('unhandledrejection', function (e) {
-    debug('rejection ' + (e.reason && e.reason.message ? e.reason.message : e.reason));
-  });
-  ['error', 'warn'].forEach(function (level) {
-    var orig = console[level];
-    console[level] = function () {
-      try { debug(level + ' ' + Array.prototype.slice.call(arguments).join(' ')); } catch (_) {}
-      return orig.apply(console, arguments);
-    };
-  });
-  debug('widget loaded; ua=' + navigator.userAgent.slice(0, 90));
-
-  window.onerror = function (msg) { debug('onerror ' + msg); post('log', { message: String(msg) }); };
+  window.onerror = function (msg) { post('log', { message: String(msg) }); };
 
   if (!token || !window.QoreIdSDK) {
     setStatus('Unable to start verification. Close this and try again.');
@@ -155,7 +114,6 @@ export const NIN_LIVENESS_WIDGET_HTML = `<!DOCTYPE html>
     // Pre-flight the camera ourselves so a permission/device failure surfaces
     // as a precise error instead of the SDK hanging on "securing camera feed".
     navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } }).then(function (stream) {
-      debug('camera preflight ok');
       stream.getTracks().forEach(function (t) { t.stop(); });
       startSdk();
     }).catch(function (e) {
