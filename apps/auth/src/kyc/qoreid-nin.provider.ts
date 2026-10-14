@@ -49,7 +49,9 @@ export class QoreIdNinProvider implements NinProvider {
     applicant: NinApplicant,
   ): Promise<NinVerificationResult> {
     const { baseUrl } = this.configService.get('kyc.qoreid', { infer: true });
-    const accessToken = await this.tokenService.getAccessToken();
+    // The liveness project, not the main one: that's where NIN access is
+    // entitled (the main project is refused with 403 "Forbidden resource").
+    const accessToken = await this.tokenService.getAccessToken('liveness');
 
     const response = await fetch(
       `${baseUrl}/v1/ng/identities/nin/${encodeURIComponent(nin)}`,
