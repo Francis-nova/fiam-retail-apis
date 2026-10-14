@@ -47,7 +47,7 @@ echo "Secrets that must differ from each other"
 [ "${JWT_ACCESS_SECRET:-x}" != "${JWT_REFRESH_SECRET:-y}" ] && ok "access secret != refresh secret" || bad "JWT_ACCESS_SECRET must differ from JWT_REFRESH_SECRET"
 
 echo "Providers (must be live, not sandbox)"
-case "${VFD_AUTH_BASE_URL:-}${VFD_WALLET_BASE_URL:-}" in
+case "${VFD_AUTH_BASE_URL:-}${VFD_WALLET_BASE_URL:-}${VFD_BILLS_BASE_URL:-}" in
   *devapps*|"") bad "VFD_*_BASE_URL is empty or still the dev/sandbox host (devapps)";;
   *) ok "VFD base URLs";;
 esac
