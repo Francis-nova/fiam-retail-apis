@@ -4,6 +4,7 @@ import Decimal from 'decimal.js';
 import { DataSource, Repository } from 'typeorm';
 import {
   Transaction,
+  TransactionKind,
   TransactionStatus,
   TransactionType,
 } from '../transactions/entities/transaction.entity';
@@ -74,6 +75,7 @@ export class PostingsService {
             walletId: dto.walletId,
             currency: wallet.currency,
             type: dto.type,
+            kind: TransactionKind.ADJUSTMENT,
             status: TransactionStatus.SUCCESSFUL,
             provider: PaymentProviderKey.MANUAL,
             accountNumber: account[0]?.n ?? 'MANUAL',

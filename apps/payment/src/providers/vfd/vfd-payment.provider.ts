@@ -20,6 +20,13 @@ import {
   ProviderTransferResult,
   ProviderTransferType,
 } from '../payment-provider.interface';
+import {
+  BillsProvider,
+  ProviderBillItem,
+  ProviderBillPayInput,
+  ProviderBillResult,
+  ProviderBiller,
+} from '../bills-provider.interface';
 import { formatDateForVfd } from './vfd-date.util';
 import { normalizeVfdBankList } from './vfd-bank-list.util';
 import {
@@ -29,6 +36,11 @@ import {
 } from './vfd-transfer-codes';
 import {
   VfdAccountEnquiryResponse,
+  VfdBillCategoryResponse,
+  VfdBillerItemsResponse,
+  VfdBillerListResponse,
+  VfdBillPayResponse,
+  VfdBillStatusResponse,
   VfdBankListResponse,
   VfdCreateAccountResponse,
   VfdRecipientResponse,
@@ -43,7 +55,7 @@ import {
 // token cache in apps/auth, but we still track expiresAt defensively and
 // clear+retry once on a rejected token.
 @Injectable()
-export class VfdPaymentProvider implements PaymentProvider {
+export class VfdPaymentProvider implements PaymentProvider, BillsProvider {
   readonly key = PaymentProviderKey.VFD;
 
   private readonly logger = new Logger(VfdPaymentProvider.name);
@@ -468,5 +480,215 @@ export class VfdPaymentProvider implements PaymentProvider {
       providerStatusCode: code,
       rawPayload: (body as Record<string, unknown> | null) ?? null,
     };
+  }
+
+  // ---- Bills payment ------------------------------------------------------
+
+  private async billsGet<T extends { status?: string }>(
+    path: string,
+    what: string,
+  ): Promise<T> {
+    const { billsBaseUrl } = this.configService.get('vfd', { infer: true });
+    const response = await this.authorizedFetch(`${billsBaseUrl}${path}`);
+    const body = (await response.json().catch(() => null)) as T | null;
+    if (!response.ok || !body || body.status !== '00') {
+      this.logger.error(
+        `VFD bills ${what} failed: ${response.status} ${safeJson(body)}`,
+      );
+      throw new ServiceUnavailableException(
+        `Unable to ${what} right now. Please try again.`,
+      );
+    }
+    return body;
+  }
+
+  async listBillCategories(): Promise<string[]> {
+    const body = await this.billsGet<VfdBillCategoryResponse>(
+      '/billercategory',
+      'load bill categories',
+    );
+    return (body.data ?? [])
+      .map((row) => row.category)
+      .filter((name): name is string => !!name);
+  }
+
+  async listBillers(category?: string): Promise<ProviderBiller[]> {
+    const qs = category ? `?categoryName=${encodeURIComponent(category)}` : '';
+    const body = await this.billsGet<VfdBillerListResponse>(
+      `/billerlist${qs}`,
+      'load billers',
+    );
+    const billers: ProviderBiller[] = [];
+    for (const row of body.data ?? []) {
+      if (!row.id || !row.name || !row.division || !row.product) continue;
+      const fee =
+        row.convenienceFee === null || row.convenienceFee === undefined
+          ? null
+          : String(row.convenienceFee).trim();
+      billers.push({
+        id: row.id,
+        name: row.name,
+        division: row.division,
+        product: String(row.product),
+        category: row.category ?? '',
+        convenienceFee: fee && Number(fee) > 0 ? fee : null,
+      });
+    }
+    return billers;
+  }
+
+  async listBillItems(
+    biller: Pick<ProviderBiller, 'id' | 'division' | 'product'>,
+  ): Promise<ProviderBillItem[]> {
+    const params = new URLSearchParams({
+      billerId: biller.id,
+      divisionId: biller.division,
+      productId: biller.product,
+    });
+    const body = await this.billsGet<VfdBillerItemsResponse>(
+      `/billerItems?${params.toString()}`,
+      'load bill items',
+    );
+    const items: ProviderBillItem[] = [];
+    for (const row of body.data?.paymentitems ?? []) {
+      if (!row.paymentCode) continue;
+      const fixed = row.isAmountFixed;
+      items.push({
+        paymentCode: row.paymentCode,
+        name: row.paymentitemname ?? row.paymentCode,
+        amount:
+          row.amount === null || row.amount === undefined
+            ? null
+            : String(row.amount),
+        isAmountFixed: fixed === true || String(fixed).toLowerCase() === 'true',
+      });
+    }
+    return items;
+  }
+
+  // false = VFD says the customer id is invalid ("99"). Anything else
+  // unexpected is an outage, not a verdict on the customer, so it throws.
+  async validateBillCustomer(input: {
+    customerId: string;
+    biller: Pick<ProviderBiller, 'id' | 'division'>;
+    paymentItem: string;
+  }): Promise<boolean> {
+    const { billsBaseUrl } = this.configService.get('vfd', { infer: true });
+    const params = new URLSearchParams({
+      divisionId: input.biller.division,
+      paymentItem: input.paymentItem,
+      customerId: input.customerId,
+      billerId: input.biller.id,
+    });
+    const response = await this.authorizedFetch(
+      `${billsBaseUrl}/customervalidate?${params.toString()}`,
+    );
+    const body = (await response.json().catch(() => null)) as {
+      status?: string;
+    } | null;
+    if (body?.status === '00') return true;
+    if (body?.status === '99') return false;
+    this.logger.error(
+      `VFD bills customer validation failed: ${response.status} ${safeJson(body)}`,
+    );
+    throw new ServiceUnavailableException(
+      'Unable to validate the customer right now. Please try again.',
+    );
+  }
+
+  async payBill(input: ProviderBillPayInput): Promise<ProviderBillResult> {
+    const { billsBaseUrl } = this.configService.get('vfd', { infer: true });
+    const payload = {
+      customerId: input.customerId,
+      amount: input.amount.toDecimalPlaces(2).toString(),
+      division: input.biller.division,
+      paymentItem: input.paymentItem,
+      productId: input.biller.product,
+      billerId: input.biller.id,
+      reference: input.reference,
+      phoneNumber: input.phoneNumber ?? '',
+    };
+
+    let response: Response;
+    try {
+      response = await this.authorizedFetch(`${billsBaseUrl}/pay`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+    } catch (err) {
+      // Network failure — the purchase may or may not have happened.
+      this.logger.error(
+        `VFD bill pay threw for reference ${input.reference}: ${(err as Error).message}`,
+      );
+      return {
+        outcome: 'REQUERY',
+        providerStatusCode: null,
+        token: null,
+        rawPayload: null,
+      };
+    }
+
+    const body = (await response
+      .json()
+      .catch(() => null)) as VfdBillPayResponse | null;
+    return {
+      outcome: this.billOutcome(body?.status),
+      providerStatusCode: body?.status ?? null,
+      token: body?.data?.token || null,
+      rawPayload: (body as Record<string, unknown> | null) ?? null,
+    };
+  }
+
+  async queryBillStatus(reference: string): Promise<ProviderBillResult> {
+    const { billsBaseUrl } = this.configService.get('vfd', { infer: true });
+    let response: Response;
+    try {
+      response = await this.authorizedFetch(
+        `${billsBaseUrl}/transactionStatus?transactionId=${encodeURIComponent(reference)}`,
+      );
+    } catch (err) {
+      this.logger.error(
+        `VFD bill status threw for reference ${reference}: ${(err as Error).message}`,
+      );
+      return {
+        outcome: 'REQUERY',
+        providerStatusCode: null,
+        token: null,
+        rawPayload: null,
+      };
+    }
+    const body = (await response
+      .json()
+      .catch(() => null)) as VfdBillStatusResponse | null;
+
+    if (body?.status === '108') {
+      // "No Transaction!" — VFD never received it; same stance as
+      // queryTransferStatus: terminal, safe to refund.
+      return {
+        outcome: 'FAILED',
+        providerStatusCode: '108',
+        token: null,
+        rawPayload: body as Record<string, unknown>,
+      };
+    }
+    const code = body?.data?.transactionStatus ?? null;
+    return {
+      outcome: this.billOutcome(code),
+      providerStatusCode: code,
+      token: body?.data?.token || null,
+      rawPayload: (body as Record<string, unknown> | null) ?? null,
+    };
+  }
+
+  // Bills response codes: 00 successful, 99 failed (reversal required), 09
+  // pending. Anything unrecognised or missing is treated as pending — verify,
+  // never guess.
+  private billOutcome(
+    code: string | null | undefined,
+  ): ProviderBillResult['outcome'] {
+    if (code === '00') return 'SUCCESSFUL';
+    if (code === '99') return 'FAILED';
+    return 'REQUERY';
   }
 }
