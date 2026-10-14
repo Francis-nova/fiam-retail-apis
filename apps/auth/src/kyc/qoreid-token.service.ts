@@ -18,26 +18,47 @@ interface QoreIdTokenResponse {
 // for ~2 hours and are meant to be reused across calls, not fetched per
 // request, so this is one cache shared by all providers rather than each
 // provider keeping (and separately refreshing) its own.
+//
+// QoreID product entitlements are per-project, and we run two: the main one
+// (BVN) and the liveness one (`liveness_nin` sessions *and* the NIN lookup that
+// double-checks them — the main project gets 403 "Forbidden resource" there).
+// Each project gets its own cached token; 'liveness' falls back to the main
+// pair when no separate liveness credentials are configured.
+export type QoreIdProject = 'main' | 'liveness';
+
 @Injectable()
 export class QoreIdTokenService {
   private readonly logger = new Logger(QoreIdTokenService.name);
-  private cachedToken: { accessToken: string; expiresAt: number } | null = null;
+  private readonly cachedTokens = new Map<
+    QoreIdProject,
+    { accessToken: string; expiresAt: number }
+  >();
 
   constructor(
     private readonly configService: ConfigService<AuthConfig, true>,
   ) {}
 
-  async getAccessToken(): Promise<string> {
-    if (this.cachedToken && this.cachedToken.expiresAt > Date.now() + 30_000) {
-      return this.cachedToken.accessToken;
+  async getAccessToken(project: QoreIdProject = 'main'): Promise<string> {
+    const cached = this.cachedTokens.get(project);
+    if (cached && cached.expiresAt > Date.now() + 30_000) {
+      return cached.accessToken;
     }
 
-    const { clientId, secret, baseUrl } = this.configService.get('kyc.qoreid', {
-      infer: true,
-    });
+    const qoreid = this.configService.get('kyc.qoreid', { infer: true });
+    const { baseUrl } = qoreid;
+    const clientId =
+      project === 'liveness'
+        ? qoreid.livenessClientId || qoreid.clientId
+        : qoreid.clientId;
+    const secret =
+      project === 'liveness'
+        ? qoreid.livenessSecret || qoreid.secret
+        : qoreid.secret;
     if (!clientId || !secret) {
       throw new ServiceUnavailableException(
-        'Identity verification is not configured (missing QOREID_CLIENT_ID / QOREID_SECRET)',
+        project === 'liveness'
+          ? 'Identity verification is not configured (missing QOREID_LIVENESS_CLIENT_ID / QOREID_LIVENESS_SECRET)'
+          : 'Identity verification is not configured (missing QOREID_CLIENT_ID / QOREID_SECRET)',
       );
     }
 
@@ -52,7 +73,7 @@ export class QoreIdTokenService {
 
     if (!response.ok || !body?.accessToken) {
       this.logger.error(
-        `QoreID token request failed: ${response.status} ${safeJson(body)}`,
+        `QoreID token request failed (${project}): ${response.status} ${safeJson(body)}`,
       );
       throw new ServiceUnavailableException(
         'Failed to authenticate with identity verification provider',
@@ -60,10 +81,10 @@ export class QoreIdTokenService {
     }
 
     const ttlSeconds = parseInt(body.expiresIn, 10) || 7200;
-    this.cachedToken = {
+    this.cachedTokens.set(project, {
       accessToken: body.accessToken,
       expiresAt: Date.now() + ttlSeconds * 1000,
-    };
+    });
     return body.accessToken;
   }
 }
