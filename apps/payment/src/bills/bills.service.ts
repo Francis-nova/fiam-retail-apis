@@ -39,6 +39,8 @@ import {
   BillStatusQueryJobData,
   PROCESS_BILL_STATUS_QUERY_JOB,
 } from './bill-status-query.queue';
+import { assertBillerRules } from './biller-rules';
+import { CustomerPhoneService } from './customer-phone';
 import { BillerRefDto, PayBillDto, ValidateCustomerDto } from './dto/bills.dto';
 
 const CATEGORIES_TTL_SECONDS = 24 * 60 * 60;
@@ -73,6 +75,7 @@ export class BillsService {
     @InjectQueue(BILL_STATUS_QUERY_QUEUE)
     private readonly queue: Queue<BillStatusQueryJobData>,
     private readonly configService: ConfigService<PaymentConfig, true>,
+    private readonly customerPhone: CustomerPhoneService,
   ) {}
 
   // ---- Catalogue (read-only) ----------------------------------------------
@@ -182,17 +185,31 @@ export class BillsService {
     const item = items.find((i) => i.paymentCode === dto.paymentItem);
     if (!item) throw new BadRequestException('Unknown payment item');
 
-    const amount = new Decimal(dto.amount);
-    if (amount.lessThanOrEqualTo(0)) {
-      throw new BadRequestException('amount must be greater than zero');
-    }
-    if (item.isAmountFixed && item.amount !== null) {
-      if (!amount.equals(new Decimal(item.amount))) {
+    // The provider's item list decides who owns the amount: a fixed-price item
+    // is priced by the backend (the client's figure, if any, must agree);
+    // anything else is the customer's to choose.
+    let amount: Decimal;
+    if (item.isAmountFixed && item.amount !== null && Number(item.amount) > 0) {
+      amount = new Decimal(item.amount);
+      if (dto.amount !== undefined && !new Decimal(dto.amount).equals(amount)) {
         throw new BadRequestException(
-          `${item.name} costs ₦${new Decimal(item.amount).toFixed(2)}`,
+          `${item.name} costs ₦${amount.toFixed(2)}`,
         );
       }
+    } else {
+      if (dto.amount === undefined) {
+        throw new BadRequestException('amount is required');
+      }
+      amount = new Decimal(dto.amount);
+      if (amount.lessThanOrEqualTo(0)) {
+        throw new BadRequestException('amount must be greater than zero');
+      }
     }
+    // VFD wants a phone number on some billers (mandatory for IKEDC) and it is
+    // harmless on the rest, so when the customer didn't give one, use their own.
+    const phoneNumber =
+      dto.phoneNumber?.trim() || (await this.customerPhone.lookup(userId));
+    assertBillerRules({ biller, item, amount, phoneNumber });
 
     if (VALIDATION_REQUIRED_CATEGORIES.has(biller.category.toLowerCase())) {
       const ok = await provider.validateBillCustomer({
@@ -265,7 +282,7 @@ export class BillsService {
       biller,
       paymentItem: item.paymentCode,
       reference,
-      phoneNumber: dto.phoneNumber,
+      phoneNumber,
     });
     return this.applyResult(transaction, result);
   }

@@ -1,0 +1,6 @@
+# Same checks CI runs (lint without --fix, then build) so a push that would
+# fail CI is stopped locally. Bypass in an emergency with: git push --no-verify
+echo "pre-push: eslint…"
+npx eslint "{apps,libs}/**/*.ts" || { echo "pre-push: lint failed — fix the errors above (or push with --no-verify)"; exit 1; }
+echo "pre-push: build…"
+npm run build || { echo "pre-push: build failed (or push with --no-verify)"; exit 1; }
