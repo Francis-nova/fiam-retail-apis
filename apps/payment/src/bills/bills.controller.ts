@@ -60,7 +60,7 @@ export class BillsController {
 
   @Get('billers')
   billers(@Query('category') category?: string) {
-    return this.billsService.listBillers(category);
+    return this.billsService.listBillersWithFees(category);
   }
 
   // Query-string ids, same names the biller list hands out.
