@@ -17,6 +17,49 @@ export enum TransactionType {
   DEBIT = 'DEBIT',
 }
 
+// What the transaction is, independent of direction. REVERSAL is the refund
+// credit written when a payout or bill payment fails; ADJUSTMENT is a staff
+// manual posting.
+export enum TransactionKind {
+  DEPOSIT = 'DEPOSIT',
+  PAYOUT = 'PAYOUT',
+  BILL_PAYMENT = 'BILL_PAYMENT',
+  REVERSAL = 'REVERSAL',
+  ADJUSTMENT = 'ADJUSTMENT',
+}
+
+// For a BILL_PAYMENT: which kind of bill (normalised from the provider's
+// category name).
+export enum BillType {
+  AIRTIME = 'AIRTIME',
+  DATA = 'DATA',
+  CABLE_TV = 'CABLE_TV',
+  UTILITY = 'UTILITY',
+  INTERNET = 'INTERNET',
+  BETTING = 'BETTING',
+  OTHER = 'OTHER',
+}
+
+export function billTypeFromCategory(category: string): BillType {
+  switch (category.trim().toLowerCase()) {
+    case 'airtime':
+      return BillType.AIRTIME;
+    case 'data':
+      return BillType.DATA;
+    case 'cable tv':
+      return BillType.CABLE_TV;
+    case 'utility':
+      return BillType.UTILITY;
+    case 'internet subscription':
+      return BillType.INTERNET;
+    case 'betting':
+    case 'gaming':
+      return BillType.BETTING;
+    default:
+      return BillType.OTHER;
+  }
+}
+
 // PENDING: recorded, resolved to a wallet, queued for the BullMQ worker.
 // PROCESSING: the worker has picked the job up and is crediting/debiting.
 // SUCCESSFUL / FAILED: terminal — verifiedAt gets set the moment either is
@@ -29,6 +72,21 @@ export enum TransactionStatus {
   SUCCESSFUL = 'SUCCESSFUL',
   FAILED = 'FAILED',
   UNMATCHED = 'UNMATCHED',
+}
+
+// What a bill-payment DEBIT bought. Null for every other transaction.
+export interface BillDetails {
+  category: string;
+  billerId: string;
+  billerName: string;
+  division: string;
+  productId: string;
+  paymentItem: string;
+  paymentItemName: string;
+  // Phone / meter / smartcard number the bill was paid for.
+  customerId: string;
+  // Utility token or voucher PIN, once the provider has returned one.
+  token: string | null;
 }
 
 // Single source of truth for a payment event, from first sight (a payin
@@ -56,6 +114,19 @@ export class Transaction {
 
   @Column({ type: 'enum', enum: TransactionType })
   type: TransactionType;
+
+  @Index()
+  @Column({ type: 'enum', enum: TransactionKind })
+  kind: TransactionKind;
+
+  // Only for BILL_PAYMENT.
+  @Column({
+    name: 'bill_type',
+    type: 'enum',
+    enum: BillType,
+    nullable: true,
+  })
+  billType: BillType | null;
 
   @Index()
   @Column({ type: 'enum', enum: TransactionStatus })
@@ -137,6 +208,10 @@ export class Transaction {
   // payins, which don't go through this code table.
   @Column({ name: 'provider_status_code', type: 'varchar', nullable: true })
   providerStatusCode: string | null;
+
+  // Set only for bill payments (airtime, data, utilities, cable TV…).
+  @Column({ type: 'jsonb', nullable: true })
+  bill: BillDetails | null;
 
   @Column({ type: 'varchar', nullable: true, length: 255 })
   narration: string | null;

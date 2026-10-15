@@ -38,7 +38,8 @@ export class InternalController {
   @Get('users/:id/contact')
   async contact(@Param('id', new ParseUUIDPipe()) id: string) {
     const user = await this.usersService.findById(id);
-    return { email: user.email, firstName: user.firstName };
+    // `phone` is stored as 234XXXXXXXXXX, or null if the customer never added one.
+    return { email: user.email, firstName: user.firstName, phone: user.phone };
   }
 
   // Called by payment from inside POST /payouts: the transaction PIN is

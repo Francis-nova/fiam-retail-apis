@@ -14,6 +14,7 @@ interface EnvVars {
   PAYMENT_PROVIDER_NGN: 'vfd';
   VFD_AUTH_BASE_URL: string;
   VFD_WALLET_BASE_URL: string;
+  VFD_BILLS_BASE_URL: string;
   VFD_CONSUMER_KEY: string;
   VFD_CONSUMER_SECRET: string;
   VFD_WEBHOOK_AUTH_TOKEN: string;
@@ -54,6 +55,11 @@ export const envSchema = Joi.object<EnvVars>({
   VFD_WALLET_BASE_URL: Joi.string()
     .uri()
     .default('https://api-devapps.vfdbank.systems/vtech-wallet/api/v2/wallet2'),
+  VFD_BILLS_BASE_URL: Joi.string()
+    .uri()
+    .default(
+      'https://api-devapps.vfdbank.systems/vtech-bills/api/v2/billspaymentstore',
+    ),
   VFD_CONSUMER_KEY: Joi.string().allow('').default(''),
   VFD_CONSUMER_SECRET: Joi.string().allow('').default(''),
   VFD_WEBHOOK_AUTH_TOKEN: Joi.string().allow('').default(''),

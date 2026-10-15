@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { CurrencyCode } from '@app/common';
 import { PaymentConfig } from '../config/configuration';
 import { PaymentProviderKey } from '../wallets/entities/address.entity';
+import { BillsProvider } from './bills-provider.interface';
 import { PaymentProvider } from './payment-provider.interface';
 import { VfdPaymentProvider } from './vfd/vfd-payment.provider';
 
@@ -11,6 +12,9 @@ export const PAYMENT_PROVIDER_REGISTRY = Symbol('PAYMENT_PROVIDER_REGISTRY');
 export interface PaymentProviderRegistry {
   getProviderForCurrency(currency: CurrencyCode): PaymentProvider;
   getProviderByKey(key: PaymentProviderKey): PaymentProvider;
+  // Bills run through VFD only for now; a second bills aggregator would
+  // become a config choice here.
+  getBillsProvider(): BillsProvider;
 }
 
 // Config strings use the same lowercase convention as SMS_PROVIDER/
@@ -37,7 +41,7 @@ export class PaymentProviderRegistryService implements PaymentProviderRegistry {
 
   constructor(
     configService: ConfigService<PaymentConfig, true>,
-    vfd: VfdPaymentProvider,
+    private readonly vfd: VfdPaymentProvider,
   ) {
     this.byKey.set(PaymentProviderKey.VFD, vfd);
 
@@ -67,6 +71,10 @@ export class PaymentProviderRegistryService implements PaymentProviderRegistry {
       );
     }
     return provider;
+  }
+
+  getBillsProvider(): BillsProvider {
+    return this.vfd;
   }
 
   getProviderByKey(key: PaymentProviderKey): PaymentProvider {
