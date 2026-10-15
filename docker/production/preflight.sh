@@ -47,10 +47,15 @@ echo "Secrets that must differ from each other"
 [ "${JWT_ACCESS_SECRET:-x}" != "${JWT_REFRESH_SECRET:-y}" ] && ok "access secret != refresh secret" || bad "JWT_ACCESS_SECRET must differ from JWT_REFRESH_SECRET"
 
 echo "Providers (must be live, not sandbox)"
-case "${VFD_AUTH_BASE_URL:-}${VFD_WALLET_BASE_URL:-}${VFD_BILLS_BASE_URL:-}" in
-  *devapps*|"") bad "VFD_*_BASE_URL is empty or still the dev/sandbox host (devapps)";;
-  *) ok "VFD base URLs";;
-esac
+# Checked one by one: an unset URL falls back to the dev host in stack.yml, and
+# joining them let an empty VFD_BILLS_BASE_URL slip through (bills then fail
+# with 403 "Invalid wallet token" against the sandbox).
+for v in VFD_AUTH_BASE_URL VFD_WALLET_BASE_URL VFD_BILLS_BASE_URL; do
+  case "${!v:-}" in
+    ""|*devapps*) bad "$v is empty or still the dev/sandbox host (devapps)";;
+    *) ok "$v";;
+  esac
+done
 need VFD_CONSUMER_KEY; need VFD_CONSUMER_SECRET; need VFD_WEBHOOK_AUTH_TOKEN
 [ "${VFD_BANK_CODE:-999999}" != "999999" ] && ok "VFD_BANK_CODE" || bad "VFD_BANK_CODE is the sandbox default 999999"
 [ "${KYC_PROVIDER:-qoreid}" = "qoreid" ] && ok "KYC_PROVIDER=qoreid" || bad "KYC_PROVIDER must be qoreid (passthrough skips BVN verification)"
