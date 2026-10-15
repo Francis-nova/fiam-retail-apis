@@ -5,6 +5,7 @@ import { Wallet } from '../wallets/entities/wallet.entity';
 import { Address } from '../wallets/entities/address.entity';
 import { Transaction } from '../transactions/entities/transaction.entity';
 import { Beneficiary } from '../beneficiaries/entities/beneficiary.entity';
+import { BillBeneficiary } from '../bills/entities/bill-beneficiary.entity';
 import { WebhookEvent } from '../webhooks/entities/webhook-event.entity';
 
 // Each app now owns its own .env (apps/<app>/.env) rather than a shared
@@ -19,7 +20,14 @@ export const AppDataSource = new DataSource({
   type: 'postgres',
   url: process.env.PAYMENT_DATABASE_URL,
   ssl: pgSsl(),
-  entities: [Wallet, Address, Transaction, Beneficiary, WebhookEvent],
+  entities: [
+    Wallet,
+    Address,
+    Transaction,
+    Beneficiary,
+    BillBeneficiary,
+    WebhookEvent,
+  ],
   migrations: [__dirname + '/migrations/*{.ts,.js}'],
   synchronize: false,
 });

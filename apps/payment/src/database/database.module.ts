@@ -6,6 +6,7 @@ import { Wallet } from '../wallets/entities/wallet.entity';
 import { Address } from '../wallets/entities/address.entity';
 import { Transaction } from '../transactions/entities/transaction.entity';
 import { Beneficiary } from '../beneficiaries/entities/beneficiary.entity';
+import { BillBeneficiary } from '../bills/entities/bill-beneficiary.entity';
 import { WebhookEvent } from '../webhooks/entities/webhook-event.entity';
 import { PaymentConfig } from '../config/configuration';
 
@@ -17,7 +18,14 @@ import { PaymentConfig } from '../config/configuration';
         type: 'postgres',
         url: configService.get('database.url', { infer: true }),
         ssl: pgSsl(),
-        entities: [Wallet, Address, Transaction, Beneficiary, WebhookEvent],
+        entities: [
+          Wallet,
+          Address,
+          Transaction,
+          Beneficiary,
+          BillBeneficiary,
+          WebhookEvent,
+        ],
         migrations: [__dirname + '/migrations/*{.ts,.js}'],
         synchronize: false,
         migrationsRun: false,

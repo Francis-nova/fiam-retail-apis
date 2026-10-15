@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Transaction } from '../transactions/entities/transaction.entity';
+import { BillBeneficiary } from './entities/bill-beneficiary.entity';
+import { BillBeneficiariesService } from './bill-beneficiaries.service';
 import { BillsController } from './bills.controller';
 import { BillsService } from './bills.service';
 import { CustomerPhoneService } from './customer-phone';
@@ -16,7 +18,7 @@ import { RedisModule } from '../redis/redis.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Transaction]),
+    TypeOrmModule.forFeature([Transaction, BillBeneficiary]),
     BullModule.registerQueue({ name: BILL_STATUS_QUERY_QUEUE }),
     WalletsModule,
     PaymentProvidersModule,
@@ -27,6 +29,11 @@ import { RedisModule } from '../redis/redis.module';
     PayoutsModule,
   ],
   controllers: [BillsController],
-  providers: [BillsService, BillStatusQueryProcessor, CustomerPhoneService],
+  providers: [
+    BillsService,
+    BillBeneficiariesService,
+    BillStatusQueryProcessor,
+    CustomerPhoneService,
+  ],
 })
 export class BillsModule {}

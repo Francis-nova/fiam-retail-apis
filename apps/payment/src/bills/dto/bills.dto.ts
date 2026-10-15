@@ -7,6 +7,13 @@ import {
   MinLength,
 } from 'class-validator';
 
+export class RenameBillBeneficiaryDto {
+  // Blank clears it.
+  @IsString()
+  @MaxLength(40)
+  nickname: string;
+}
+
 // The three identifiers VFD's biller list hands out; every later call
 // (items, validate, pay) is keyed by them.
 export class BillerRefDto {
