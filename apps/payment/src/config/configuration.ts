@@ -32,6 +32,11 @@ export interface PaymentConfig {
     // PaymentProviderRegistryService, not here.
     providerByCurrency: Record<CurrencyCode, string>;
   };
+  bills: {
+    // Flat platform fee (naira) on every bill payment except airtime and
+    // data. Decimal string; "0" disables it.
+    serviceFee: string;
+  };
   vfd: {
     authBaseUrl: string;
     walletBaseUrl: string;
@@ -78,6 +83,9 @@ export default (): PaymentConfig => ({
     providerByCurrency: {
       [CurrencyCode.NGN]: process.env.PAYMENT_PROVIDER_NGN ?? 'vfd',
     },
+  },
+  bills: {
+    serviceFee: process.env.BILLS_SERVICE_FEE?.trim() || '100',
   },
   vfd: {
     authBaseUrl:

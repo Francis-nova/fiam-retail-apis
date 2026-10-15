@@ -20,6 +20,7 @@ interface EnvVars {
   VFD_WEBHOOK_AUTH_TOKEN: string;
   VFD_BANK_CODE: string;
   VFD_WALLET_NAME: string;
+  BILLS_SERVICE_FEE: number;
 }
 
 export const envSchema = Joi.object<EnvVars>({
@@ -70,6 +71,8 @@ export const envSchema = Joi.object<EnvVars>({
   // references) — safe to default in dev, should be set explicitly for a
   // real registered wallet name in production.
   VFD_WALLET_NAME: Joi.string().default('ADL'),
+  // Flat fee (naira) added to bill payments other than airtime and data.
+  BILLS_SERVICE_FEE: Joi.number().min(0).precision(2).default(100),
 });
 
 export function validate(config: Record<string, unknown>) {

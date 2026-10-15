@@ -39,6 +39,7 @@ import {
   BillStatusQueryJobData,
   PROCESS_BILL_STATUS_QUERY_JOB,
 } from './bill-status-query.queue';
+import { calculateBillFees } from './bill-fee';
 import { assertBillerRules } from './biller-rules';
 import { CustomerPhoneService } from './customer-phone';
 import { BillBeneficiariesService } from './bill-beneficiaries.service';
@@ -120,6 +121,22 @@ export class BillsService {
       BILLERS_TTL_SECONDS,
       () => provider.listBillers(category?.trim() || undefined),
     );
+  }
+
+  private feeFor(biller: Pick<ProviderBiller, 'category' | 'convenienceFee'>) {
+    const { serviceFee } = this.configService.get('bills', { infer: true });
+    return calculateBillFees(biller, serviceFee);
+  }
+
+  // The catalogue as the app sees it: each biller carries `fee`, the total the
+  // customer will be charged on top of the bill, so the screen never has to
+  // work it out. Applied here rather than in the cached copy so a config change
+  // takes effect immediately. Pay recomputes it independently.
+  async listBillersWithFees(
+    category?: string,
+  ): Promise<(ProviderBiller & { fee: string })[]> {
+    const billers = await this.listBillers(category);
+    return billers.map((b) => ({ ...b, fee: this.feeFor(b).total.toFixed(2) }));
   }
 
   // Never cached: VFD says items are dynamic (prices, bundles).
@@ -227,7 +244,7 @@ export class BillsService {
     }
 
     // Charged to the customer on top of the bill; only `amount` goes to VFD.
-    const fee = new Decimal(biller.convenienceFee ?? 0);
+    const fee = this.feeFor(biller).total;
     const debit = amount.plus(fee);
 
     const wallet = await this.walletsService.findByUserAndCurrency(
