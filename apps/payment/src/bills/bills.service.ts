@@ -41,6 +41,7 @@ import {
 } from './bill-status-query.queue';
 import { assertBillerRules } from './biller-rules';
 import { CustomerPhoneService } from './customer-phone';
+import { BillBeneficiariesService } from './bill-beneficiaries.service';
 import { BillerRefDto, PayBillDto, ValidateCustomerDto } from './dto/bills.dto';
 
 const CATEGORIES_TTL_SECONDS = 24 * 60 * 60;
@@ -76,6 +77,7 @@ export class BillsService {
     private readonly queue: Queue<BillStatusQueryJobData>,
     private readonly configService: ConfigService<PaymentConfig, true>,
     private readonly customerPhone: CustomerPhoneService,
+    private readonly billBeneficiaries: BillBeneficiariesService,
   ) {}
 
   // ---- Catalogue (read-only) ----------------------------------------------
@@ -346,6 +348,26 @@ export class BillsService {
         : {}),
     });
     void this.notifications.notifyTransaction(transaction, 'PAYOUT_SUCCESSFUL');
+    await this.rememberRecipient(transaction);
+  }
+
+  // Auto-saves the number/meter as a bill beneficiary. Best effort: a problem
+  // here must never turn a paid bill into an error.
+  private async rememberRecipient(transaction: Transaction): Promise<void> {
+    try {
+      if (!transaction.bill || !transaction.walletId) return;
+      const wallet = await this.walletsService.findById(transaction.walletId);
+      if (!wallet) return;
+      await this.billBeneficiaries.recordSuccess(
+        wallet.userId,
+        transaction.bill,
+        transaction.amount,
+      );
+    } catch (err) {
+      this.logger.warn(
+        `Could not save bill beneficiary for ${transaction.id}: ${(err as Error).message}`,
+      );
+    }
   }
 
   /**
