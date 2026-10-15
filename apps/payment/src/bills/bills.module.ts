@@ -4,6 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { Transaction } from '../transactions/entities/transaction.entity';
 import { BillsController } from './bills.controller';
 import { BillsService } from './bills.service';
+import { CustomerPhoneService } from './customer-phone';
 import { BillStatusQueryProcessor } from './bill-status-query.processor';
 import { BILL_STATUS_QUERY_QUEUE } from './bill-status-query.queue';
 import { WalletsModule } from '../wallets/wallets.module';
@@ -26,6 +27,6 @@ import { RedisModule } from '../redis/redis.module';
     PayoutsModule,
   ],
   controllers: [BillsController],
-  providers: [BillsService, BillStatusQueryProcessor],
+  providers: [BillsService, BillStatusQueryProcessor, CustomerPhoneService],
 })
 export class BillsModule {}

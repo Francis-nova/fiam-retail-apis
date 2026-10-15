@@ -6,6 +6,7 @@
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
+    "prepare": "husky || true",
     "build": "npm run build:auth && npm run build:postoffice && npm run build:payment && npm run build:admin",
     "build:auth": "nest build auth",
     "build:postoffice": "nest build postoffice",

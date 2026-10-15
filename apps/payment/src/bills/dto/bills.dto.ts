@@ -40,9 +40,13 @@ export class PayBillDto extends ValidateCustomerDto {
   @Matches(/^\d{4}$/, { message: 'PIN must be exactly 4 digits' })
   pin: string;
 
-  // Naira decimal string, same convention as payouts.
+  // Naira decimal string, same convention as payouts. Required only for
+  // variable-price items (airtime, electricity top-ups); for fixed-price items
+  // (cable bouquets, data bundles) the server uses the provider's price and
+  // rejects a client amount that disagrees with it.
+  @IsOptional()
   @IsDecimal({ decimal_digits: '0,2' })
-  amount: string;
+  amount?: string;
 
   @IsOptional()
   @Matches(/^\+?\d{7,15}$/, { message: 'phoneNumber must be a phone number' })
