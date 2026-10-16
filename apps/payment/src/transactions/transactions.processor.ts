@@ -105,6 +105,10 @@ export class TransactionsProcessor extends WorkerHost {
     this.logger.error(
       `Transaction ${job.data.transactionId} failed permanently after ${job.attemptsMade} attempts`,
     );
+    const failed = await this.transactionsRepo.findOneBy({
+      id: job.data.transactionId,
+    });
+    if (failed) void this.notifications.alertTransaction(failed, 'FAILED');
     reportIssueToSlack('Deposit could not be credited — failed permanently', {
       transactionId: job.data.transactionId,
       attempts: job.attemptsMade,

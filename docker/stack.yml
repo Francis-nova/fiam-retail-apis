@@ -190,6 +190,9 @@ services:
       VFD_BANK_CODE: ${VFD_BANK_CODE:-999999}
       VFD_WALLET_NAME: ${VFD_WALLET_NAME:-ADL}
       BILLS_SERVICE_FEE: ${BILLS_SERVICE_FEE:-100}
+      # Slack incoming webhooks; blank = that feed is off.
+      SLACK_WEBHOOK_PAYMENTS: ${SLACK_WEBHOOK_PAYMENTS:-}
+      SLACK_WEBHOOK_POOL_BALANCE: ${SLACK_WEBHOOK_POOL_BALANCE:-}
       AUTH_INTERNAL_URL: http://auth:7001
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-}
     healthcheck:
