@@ -129,8 +129,8 @@ export class TransactionsController {
   constructor(private readonly transactionsService: TransactionsService) {}
 
   // Mobile's Dashboard "Recent Transactions" section and a future full
-  // history screen both read this — most-recent-first, capped at 100 per
-  // request (no cursor pagination yet, not needed for "recent N" today).
+  // History screen both read this — most-recent-first, capped at 100 per
+  // request. Page through with `before` = the last row's createdAt.
   @Get()
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
@@ -141,6 +141,7 @@ export class TransactionsController {
     @Query('status') status?: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
+    @Query('before') before?: string,
   ): Promise<TransactionResponse[]> {
     const transactions = await this.transactionsService.findAllForUser(
       user.userId,
@@ -150,6 +151,7 @@ export class TransactionsController {
         status: parseStatuses(status),
         from: parseDate(from),
         to: parseDate(to),
+        before: parseDate(before),
       },
     );
     return transactions.map(toResponse);
