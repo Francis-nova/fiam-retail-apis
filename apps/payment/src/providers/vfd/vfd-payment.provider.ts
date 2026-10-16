@@ -570,6 +570,11 @@ export class VfdPaymentProvider implements PaymentProvider, BillsProvider {
             ? null
             : String(row.amount),
         isAmountFixed: fixed === true || String(fixed).toLowerCase() === 'true',
+        productId:
+          row.productId === null || row.productId === undefined
+            ? null
+            : String(row.productId),
+        division: row.division ? String(row.division) : null,
       });
     }
     return items;

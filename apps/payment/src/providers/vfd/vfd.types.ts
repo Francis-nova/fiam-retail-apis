@@ -128,6 +128,8 @@ export interface VfdBillerItemsResponse {
       amount?: string | number | null;
       isAmountFixed?: string | boolean | null;
       itemFee?: string | number | null;
+      productId?: string | number | null;
+      division?: string | null;
       [key: string]: unknown;
     }[];
   };

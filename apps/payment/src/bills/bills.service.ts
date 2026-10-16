@@ -312,7 +312,12 @@ export class BillsService {
     const result = await provider.payBill({
       customerId: dto.customerId,
       amount,
-      biller,
+      // The selected item's own product/division win over the biller list's.
+      biller: {
+        id: biller.id,
+        division: item.division ?? biller.division,
+        product: item.productId ?? biller.product,
+      },
       paymentItem: item.paymentCode,
       reference,
       phoneNumber,
