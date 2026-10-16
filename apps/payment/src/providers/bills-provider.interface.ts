@@ -29,6 +29,8 @@ export interface ProviderCustomerValidation {
   valid: boolean;
   name: string | null;
   address: string | null;
+  // Everything the biller returned about the customer, labelled for display.
+  details: { label: string; value: string }[];
 }
 
 export interface ProviderBillPayInput {
