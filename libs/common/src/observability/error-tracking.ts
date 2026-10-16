@@ -1,4 +1,9 @@
 import * as Sentry from '@sentry/node';
+import {
+  ErrorContext,
+  initSlackErrorReporting,
+  reportErrorToSlack,
+} from './slack-error-reporter';
 
 let enabled = false;
 
@@ -31,6 +36,9 @@ export function scrubEvent<T extends Sentry.ErrorEvent>(event: T): T {
  * so local development and any environment without a DSN are unaffected.
  */
 export function initErrorTracking(service: string): boolean {
+  // Slack error alerts are independent of Sentry (each is off unless its own
+  // env var is set).
+  initSlackErrorReporting(service);
   const dsn = process.env.SENTRY_DSN;
   if (!dsn) return false;
   Sentry.init({
@@ -48,8 +56,9 @@ export function initErrorTracking(service: string): boolean {
   return true;
 }
 
-/** Reports an unexpected (5xx) error. A no-op unless tracking is enabled. */
-export function captureServerError(err: unknown): void {
+/** Reports an unexpected (5xx) error to Slack and, when enabled, Sentry. */
+export function captureServerError(err: unknown, context?: ErrorContext): void {
+  reportErrorToSlack(err, context);
   if (!enabled) return;
   Sentry.captureException(err);
 }

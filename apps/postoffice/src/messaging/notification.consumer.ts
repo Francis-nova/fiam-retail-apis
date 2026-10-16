@@ -3,6 +3,7 @@ import { Ctx, EventPattern, Payload, RmqContext } from '@nestjs/microservices';
 import {
   NOTIFICATION_REQUESTED_PATTERN,
   NotificationChannel,
+  captureServerError,
   runWithMessageRequestId,
 } from '@app/common';
 import type { NotificationRequestedMessage } from '@app/common';
@@ -68,6 +69,11 @@ export class NotificationConsumer {
       this.logger.error(
         `Notification delivery failed for ${message.channel} recipient [REDACTED]: ${(err as Error).message}`,
       );
+      // No recipient or payload: the address is customer data.
+      captureServerError(err, {
+        method: 'RMQ',
+        url: `${NOTIFICATION_REQUESTED_PATTERN} (${message.channel}/${message.template})`,
+      });
       // No requeue — a permanently-failing send (bad address, missing
       // provider creds) would otherwise loop forever. Routes to the queue's
       // dead-letter exchange for manual investigation instead.

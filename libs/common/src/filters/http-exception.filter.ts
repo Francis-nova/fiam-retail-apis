@@ -34,7 +34,14 @@ export class HttpExceptionFilter implements ExceptionFilter {
     // Only genuine server faults go to error tracking; 4xx are the caller's
     // mistakes (wrong PIN, validation) and would just be noise.
     if (Number(status) >= 500) {
-      captureServerError(exception);
+      captureServerError(exception, {
+        status: Number(status),
+        method: request.method,
+        url: request.originalUrl ?? request.url,
+        // Set by the JWT guard on authenticated routes; absent otherwise.
+        userId: (request as Request & { user?: { userId?: string } }).user
+          ?.userId,
+      });
     }
 
     response.status(status).json({
