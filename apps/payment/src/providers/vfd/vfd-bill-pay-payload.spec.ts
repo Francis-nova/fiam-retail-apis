@@ -19,7 +19,11 @@ describe('VfdPaymentProvider.payBill request', () => {
   const input = {
     customerId: '45012345627',
     amount: new Decimal('2000'),
-    biller: { id: 'IKEDC', division: 'F', product: '408' },
+    biller: {
+      id: 'IKEDC',
+      division: 'F',
+      product: '408',
+    },
     paymentItem: 'IKEDC_PREPAID',
     reference: 'ADL-B541767627',
     phoneNumber: '08030000000',

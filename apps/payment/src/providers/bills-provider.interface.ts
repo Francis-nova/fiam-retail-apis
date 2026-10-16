@@ -18,6 +18,9 @@ export interface ProviderBillItem {
   // Only meaningful when isAmountFixed.
   amount: string | null;
   isAmountFixed: boolean;
+  // The item's own product and division; /pay is keyed by these.
+  productId: string | null;
+  division: string | null;
 }
 
 // `valid: false` means the provider says the number isn't recognised. `name`
