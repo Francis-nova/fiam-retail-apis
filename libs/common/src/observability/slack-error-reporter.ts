@@ -102,8 +102,16 @@ function allow(
   return { send: true, held };
 }
 
-function post(text: string): void {
-  const url = webhookUrl();
+/** Which deployment is talking: "production", "staging"… for alert headers. */
+export function environmentLabel(): string {
+  return environment();
+}
+
+/**
+ * Posts `text` to a Slack incoming webhook. Fire-and-forget: a blank URL or a
+ * Slack outage is silently ignored so it can never affect the caller.
+ */
+export function postToSlack(url: string, text: string): void {
   if (!url) return;
   fetch(url, {
     method: 'POST',
@@ -111,6 +119,10 @@ function post(text: string): void {
     body: JSON.stringify({ text }),
     signal: AbortSignal.timeout(POST_TIMEOUT_MS),
   }).catch(() => undefined);
+}
+
+function post(text: string): void {
+  postToSlack(webhookUrl(), text);
 }
 
 function describe(err: unknown): {

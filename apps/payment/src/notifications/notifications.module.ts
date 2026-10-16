@@ -6,10 +6,12 @@ import { PaymentConfig } from '../config/configuration';
 import { NotificationsService } from './notifications.service';
 import { POSTOFFICE_NOTIFICATION_CLIENT } from './postoffice-notification-client.token';
 import { WalletsModule } from '../wallets/wallets.module';
+import { PaymentSlackModule } from '../slack/payment-slack.module';
 
 @Module({
   imports: [
     WalletsModule,
+    PaymentSlackModule,
     ClientsModule.registerAsync([
       {
         name: POSTOFFICE_NOTIFICATION_CLIENT,

@@ -43,11 +43,33 @@ export class SlackNotifier {
     );
   }
 
-  private post(url: string, headline: string, user: SlackUser): void {
+  // Goes to the KYC channel: the same people who review identity and tier
+  // changes decide on account closures.
+  accountDeletionRequested(user: SlackUser, reason: string | null): void {
+    this.post(
+      this.config.get('slack.kycCompletedWebhookUrl', { infer: true }),
+      ':wastebasket: Account deletion requested, awaiting review',
+      user,
+      // Free text from the customer: clipped so one message stays readable.
+      reason ? [`Reason: ${reason.slice(0, 300)}`] : [],
+    );
+  }
+
+  private post(
+    url: string,
+    headline: string,
+    user: SlackUser,
+    extraLines: string[] = [],
+  ): void {
     if (!url) {
       return;
     }
-    const text = `${headline}\n*${user.firstName} ${user.lastName}* · ${user.email}\nUser ID: ${user.id}`;
+    const text = [
+      headline,
+      `*${user.firstName} ${user.lastName}* · ${user.email}`,
+      `User ID: ${user.id}`,
+      ...extraLines,
+    ].join('\n');
     fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

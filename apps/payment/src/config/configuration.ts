@@ -32,6 +32,13 @@ export interface PaymentConfig {
     // PaymentProviderRegistryService, not here.
     providerByCurrency: Record<CurrencyCode, string>;
   };
+  // One Slack incoming webhook per channel; blank = that feed is off.
+  slack: {
+    // Every credit/debit, successful or failed.
+    paymentsWebhookUrl: string;
+    // The hourly VFD pool vs customer-wallets report.
+    poolBalanceWebhookUrl: string;
+  };
   bills: {
     // Flat platform fee (naira) on every bill payment except airtime and
     // data. Decimal string; "0" disables it.
@@ -83,6 +90,10 @@ export default (): PaymentConfig => ({
     providerByCurrency: {
       [CurrencyCode.NGN]: process.env.PAYMENT_PROVIDER_NGN ?? 'vfd',
     },
+  },
+  slack: {
+    paymentsWebhookUrl: process.env.SLACK_WEBHOOK_PAYMENTS ?? '',
+    poolBalanceWebhookUrl: process.env.SLACK_WEBHOOK_POOL_BALANCE ?? '',
   },
   bills: {
     serviceFee: process.env.BILLS_SERVICE_FEE?.trim() || '100',

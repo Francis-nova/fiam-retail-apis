@@ -9,6 +9,7 @@ import { Repository } from 'typeorm';
 import { PushTemplate } from '@app/common';
 import { PasswordService } from '../credentials/password.service';
 import { NotificationPublisher } from '../messaging/notification.publisher';
+import { SlackNotifier } from '../messaging/slack-notifier.service';
 import { SecurityAlertsService } from '../messaging/security-alerts.service';
 import { UserStatus } from '../users/entities/user.entity';
 import { UsersService } from '../users/users.service';
@@ -31,6 +32,7 @@ export class DeletionService {
     private readonly passwords: PasswordService,
     private readonly notifications: NotificationPublisher,
     private readonly securityAlerts: SecurityAlertsService,
+    private readonly slack: SlackNotifier,
   ) {}
 
   private view(r: AccountDeletionRequest | null) {
@@ -97,6 +99,7 @@ export class DeletionService {
     this.notifications.requestEmail(user.email, 'deletion-request-received', {
       firstName: user.firstName,
     });
+    this.slack.accountDeletionRequested(user, saved.reason);
     return this.view(saved);
   }
 

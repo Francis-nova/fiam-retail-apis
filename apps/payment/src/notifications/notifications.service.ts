@@ -12,6 +12,11 @@ import { POSTOFFICE_NOTIFICATION_CLIENT } from './postoffice-notification-client
 import { PaymentConfig } from '../config/configuration';
 import { WalletsService } from '../wallets/wallets.service';
 import { Transaction } from '../transactions/entities/transaction.entity';
+import { PaymentSlackNotifier } from '../slack/payment-slack.notifier';
+import type {
+  AlertableTransaction,
+  PaymentOutcome,
+} from '../slack/slack-messages';
 
 export type TransactionNotificationEvent =
   | 'CREDIT_RECEIVED'
@@ -31,6 +36,15 @@ const TEMPLATE_BY_EVENT: Record<TransactionNotificationEvent, PushTemplate> = {
 
 // Postoffice's email template for a money-in / money-out receipt. Only the
 // two successful events get one — a failed payout is push-only for now.
+// What each notification event means for the payments Slack feed.
+const OUTCOME_BY_EVENT: Record<TransactionNotificationEvent, PaymentOutcome> = {
+  CREDIT_RECEIVED: 'SUCCESSFUL',
+  PAYOUT_SUCCESSFUL: 'SUCCESSFUL',
+  PAYOUT_FAILED: 'FAILED',
+  ACCOUNT_CREDITED: 'SUCCESSFUL',
+  ACCOUNT_DEBITED: 'SUCCESSFUL',
+};
+
 const RECEIPT_TEMPLATE = 'transaction-receipt';
 const RECEIPT_DIRECTION: Partial<
   Record<TransactionNotificationEvent, 'credit' | 'debit'>
@@ -95,7 +109,27 @@ export class NotificationsService {
     private readonly client: ClientProxy,
     private readonly walletsService: WalletsService,
     private readonly configService: ConfigService<PaymentConfig, true>,
+    private readonly slack: PaymentSlackNotifier,
   ) {}
+
+  // The payments Slack feed for a transaction that didn't go through
+  // notifyTransaction (e.g. a deposit that could not be credited). Safe to call
+  // without awaiting.
+  async alertTransaction(
+    transaction: AlertableTransaction & { walletId?: string | null },
+    outcome: PaymentOutcome,
+  ): Promise<void> {
+    try {
+      const wallet = transaction.walletId
+        ? await this.walletsService.findById(transaction.walletId)
+        : null;
+      this.slack.transaction(transaction, outcome, wallet?.userId);
+    } catch (err) {
+      this.logger.warn(
+        `Could not post payment alert: ${(err as Error).message}`,
+      );
+    }
+  }
 
   // Safe to call without awaiting.
   async notifyTransaction(
@@ -106,6 +140,14 @@ export class NotificationsService {
       if (!transaction?.walletId) return;
       const wallet = await this.walletsService.findById(transaction.walletId);
       if (!wallet) return;
+
+      // Same moment, same facts: the payments Slack feed. (The objects passed
+      // here are full transactions; the parameter type is just narrow.)
+      this.slack.transaction(
+        transaction,
+        OUTCOME_BY_EVENT[event],
+        wallet.userId,
+      );
 
       this.client.emit(
         NOTIFICATION_REQUESTED_PATTERN,
