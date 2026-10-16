@@ -125,6 +125,8 @@ export class TransactionsService {
       status?: TransactionStatus[];
       from?: Date;
       to?: Date;
+      // Cursor for infinite scroll: only rows created strictly before this.
+      before?: Date;
     } = {},
   ): Promise<Transaction[]> {
     const wallets = await this.walletsService.findAllForUser(userId);
@@ -146,6 +148,9 @@ export class TransactionsService {
       query.andWhere('t.status IN (:...statuses)', {
         statuses: filters.status,
       });
+    }
+    if (filters.before) {
+      query.andWhere('t.createdAt < :before', { before: filters.before });
     }
     // Same "when did it happen" the mobile app displays and groups by:
     // the provider's timestamp when there is one, else when we saw it.

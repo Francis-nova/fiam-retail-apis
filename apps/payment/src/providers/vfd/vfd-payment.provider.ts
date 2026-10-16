@@ -613,7 +613,7 @@ export class VfdPaymentProvider implements PaymentProvider, BillsProvider {
       return { valid: true, ...info };
     }
     if (body?.status === '99') {
-      return { valid: false, name: null, address: null };
+      return { valid: false, name: null, address: null, details: [] };
     }
     this.logger.error(
       `VFD bills customer validation failed: ${response.status} ${safeJson(body)}`,

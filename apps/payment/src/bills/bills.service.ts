@@ -181,6 +181,7 @@ export class BillsService {
     customerId: string;
     customerName: string | null;
     customerAddress: string | null;
+    customerDetails: { label: string; value: string }[];
   }> {
     const biller = await this.resolveBiller(dto);
     const result = await this.registry.getBillsProvider().validateBillCustomer({
@@ -198,6 +199,7 @@ export class BillsService {
       customerId: dto.customerId,
       customerName: result.name,
       customerAddress: result.address,
+      customerDetails: result.details,
     };
   }
 
