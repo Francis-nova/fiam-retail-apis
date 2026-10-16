@@ -24,9 +24,11 @@ import {
   BillsProvider,
   ProviderBillItem,
   ProviderBillPayInput,
+  ProviderCustomerValidation,
   ProviderBillResult,
   ProviderBiller,
 } from '../bills-provider.interface';
+import { extractCustomerInfo } from './vfd-customer-info';
 import { formatDateForVfd } from './vfd-date.util';
 import { normalizeVfdBankList } from './vfd-bank-list.util';
 import {
@@ -48,6 +50,12 @@ import {
   VfdTransactionStatusResponse,
   VfdTransferResponse,
 } from './vfd.types';
+
+function maskTail(value: string): string {
+  return value.length <= 4
+    ? '****'
+    : `${'*'.repeat(value.length - 4)}${value.slice(-4)}`;
+}
 
 // VFD wallets API — https://vbaas-docs.vfdtech.ng/
 // Auth is a cached token (validityTime: "-1" = never expires, per VFD's
@@ -572,7 +580,7 @@ export class VfdPaymentProvider implements PaymentProvider, BillsProvider {
     customerId: string;
     biller: Pick<ProviderBiller, 'id' | 'division'>;
     paymentItem: string;
-  }): Promise<boolean> {
+  }): Promise<ProviderCustomerValidation> {
     const { billsBaseUrl } = this.configService.get('vfd', { infer: true });
     const params = new URLSearchParams({
       divisionId: input.biller.division,
@@ -585,9 +593,22 @@ export class VfdPaymentProvider implements PaymentProvider, BillsProvider {
     );
     const body = (await response.json().catch(() => null)) as {
       status?: string;
+      data?: unknown;
     } | null;
-    if (body?.status === '00') return true;
-    if (body?.status === '99') return false;
+    if (body?.status === '00') {
+      const info = extractCustomerInfo(body.data);
+      // Field names only (never values): VFD doesn't document what a live
+      // biller returns here, so this is how we learn it without logging PII.
+      this.logger.log(
+        `VFD bills validation ok for ${input.biller.id}: data fields [${Object.keys(
+          (body.data as object) ?? {},
+        ).join(', ')}]`,
+      );
+      return { valid: true, ...info };
+    }
+    if (body?.status === '99') {
+      return { valid: false, name: null, address: null };
+    }
     this.logger.error(
       `VFD bills customer validation failed: ${response.status} ${safeJson(body)}`,
     );
@@ -606,8 +627,22 @@ export class VfdPaymentProvider implements PaymentProvider, BillsProvider {
       productId: input.biller.product,
       billerId: input.biller.id,
       reference: input.reference,
-      phoneNumber: input.phoneNumber ?? '',
+      // Optional in the docs (mandatory only for some billers, e.g. IKEDC) —
+      // omitted rather than sent blank when we have none.
+      phoneNumber: input.phoneNumber?.trim() || undefined,
     };
+    // What we actually sent, minus anything identifying (customer id and
+    // phone are masked) — the request was never visible before, which made a
+    // provider rejection impossible to compare against the docs.
+    this.logger.log(
+      `VFD bill pay request: ${JSON.stringify({
+        ...payload,
+        customerId: maskTail(payload.customerId),
+        ...(payload.phoneNumber
+          ? { phoneNumber: maskTail(payload.phoneNumber) }
+          : {}),
+      })}`,
+    );
 
     let response: Response;
     try {
@@ -632,6 +667,13 @@ export class VfdPaymentProvider implements PaymentProvider, BillsProvider {
     const body = (await response
       .json()
       .catch(() => null)) as VfdBillPayResponse | null;
+    if (body?.status !== '00') {
+      // The provider's own reason ("Not in the recent documentation" etc.) —
+      // what support needs, and it was otherwise only visible in the database.
+      this.logger.warn(
+        `VFD bill pay ${input.reference} for ${input.biller.id} returned ${body?.status ?? 'no status'}: ${body?.message ?? 'no message'}`,
+      );
+    }
     return {
       outcome: this.billOutcome(body?.status),
       providerStatusCode: body?.status ?? null,

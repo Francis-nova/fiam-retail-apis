@@ -9,6 +9,7 @@ export * from './http/harden';
 export * from './http/rate-limit.module';
 export * from './http/redis-throttler.storage';
 export * from './observability/error-tracking';
+export * from './observability/slack-error-reporter';
 export * from './database/pg-ssl';
 export * from './observability/logger.module';
 export * from './observability/request-context';

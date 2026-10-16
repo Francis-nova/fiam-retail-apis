@@ -14,7 +14,11 @@ import { Queue } from 'bullmq';
 import { DataSource, EntityManager, Repository } from 'typeorm';
 import Decimal from 'decimal.js';
 import { PaymentProviderKey } from '../wallets/entities/address.entity';
-import { CurrencyCode, withJobRequestId } from '@app/common';
+import {
+  CurrencyCode,
+  reportIssueToSlack,
+  withJobRequestId,
+} from '@app/common';
 import { PaymentConfig } from '../config/configuration';
 import { WalletsService } from '../wallets/wallets.service';
 import { AddressService } from '../wallets/address.service';
@@ -489,6 +493,11 @@ export class PayoutsService {
     this.logger.error(
       `Payout ${transaction.reference} (transaction ${transaction.id}) failed with provider code ${providerStatusCode ?? 'unknown'} and a NO-REVERSAL instruction — funds held, needs manual review with the provider`,
     );
+    reportIssueToSlack('Payout on HOLD — funds kept, needs manual review', {
+      reference: transaction.reference,
+      transactionId: transaction.id,
+      providerCode: providerStatusCode,
+    });
   }
 
   // Public: also called by PayoutStatusQueryProcessor once TSQ confirms a
@@ -553,6 +562,13 @@ export class PayoutsService {
     // rolled back.
     if (reversed) {
       void this.notifications.notifyTransaction(reversed, 'PAYOUT_FAILED');
+      const message = (reversed as Transaction).rawPayload?.message;
+      reportIssueToSlack('Payout failed at provider (customer refunded)', {
+        reference: (reversed as Transaction).reference,
+        amount: (reversed as Transaction).amount,
+        providerCode: (reversed as Transaction).providerStatusCode,
+        providerMessage: typeof message === 'string' ? message : null,
+      });
     }
   }
 }

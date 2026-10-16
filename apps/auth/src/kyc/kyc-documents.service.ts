@@ -14,6 +14,7 @@ import {
 } from './entities/kyc-document.entity';
 import { StorageService } from '../storage/storage.service';
 import { UsersService } from '../users/users.service';
+import { SlackNotifier } from '../messaging/slack-notifier.service';
 import { CustomerTier, TierUpgradeStatus } from '../users/entities/user.entity';
 import { OcrService } from './ocr.service';
 import { NIN_PROVIDER } from './nin-provider.interface';
@@ -74,6 +75,7 @@ export class KycDocumentsService {
     private readonly ocrService: OcrService,
     @Inject(NIN_PROVIDER) private readonly ninProvider: NinProvider,
     private readonly qoreIdSessionService: QoreIdSessionService,
+    private readonly slack: SlackNotifier,
   ) {}
 
   async upload(
@@ -257,6 +259,7 @@ export class KycDocumentsService {
       TierUpgradeStatus.UNDER_REVIEW,
       new Date(),
     );
+    this.slack.tierUpgradeRequested(user);
     return this.getTierUpgradeStatus(userId);
   }
 

@@ -13,7 +13,11 @@ import { Queue } from 'bullmq';
 import { DataSource, Repository } from 'typeorm';
 import Decimal from 'decimal.js';
 import type Redis from 'ioredis';
-import { CurrencyCode, withJobRequestId } from '@app/common';
+import {
+  CurrencyCode,
+  reportIssueToSlack,
+  withJobRequestId,
+} from '@app/common';
 import { PaymentConfig } from '../config/configuration';
 import { REDIS_CLIENT } from '../redis/redis.module';
 import { WalletsService } from '../wallets/wallets.service';
@@ -170,21 +174,29 @@ export class BillsService {
     };
   }
 
-  async validateCustomer(
-    dto: ValidateCustomerDto,
-  ): Promise<{ valid: true; customerId: string }> {
+  async validateCustomer(dto: ValidateCustomerDto): Promise<{
+    valid: true;
+    customerId: string;
+    customerName: string | null;
+    customerAddress: string | null;
+  }> {
     const biller = await this.resolveBiller(dto);
-    const ok = await this.registry.getBillsProvider().validateBillCustomer({
+    const result = await this.registry.getBillsProvider().validateBillCustomer({
       customerId: dto.customerId,
       biller: this.toKey(dto),
       paymentItem: dto.paymentItem,
     });
-    if (!ok) {
+    if (!result.valid) {
       throw new BadRequestException(
         `We couldn't verify that ${biller.name} number. Please check it and try again.`,
       );
     }
-    return { valid: true, customerId: dto.customerId };
+    return {
+      valid: true,
+      customerId: dto.customerId,
+      customerName: result.name,
+      customerAddress: result.address,
+    };
   }
 
   // ---- Pay ----------------------------------------------------------------
@@ -231,12 +243,12 @@ export class BillsService {
     assertBillerRules({ biller, item, amount, phoneNumber });
 
     if (VALIDATION_REQUIRED_CATEGORIES.has(biller.category.toLowerCase())) {
-      const ok = await provider.validateBillCustomer({
+      const { valid } = await provider.validateBillCustomer({
         customerId: dto.customerId,
         biller: this.toKey(dto),
         paymentItem: dto.paymentItem,
       });
-      if (!ok) {
+      if (!valid) {
         throw new BadRequestException(
           `We couldn't verify that ${biller.name} number. Please check it and try again.`,
         );
@@ -477,15 +489,33 @@ export class BillsService {
     });
     if (reversed) {
       void this.notifications.notifyTransaction(reversed, 'PAYOUT_FAILED');
+      this.alertFailedBill(reversed);
     }
   }
 
-  // "ADLB123456789" — wallet-name prefix (VFD wants one) + "B" + 9 digits.
+  // The provider rejected a bill and the customer was refunded. Not an
+  // exception, so nothing else would surface why (e.g. VFD's own message).
+  private alertFailedBill(transaction: Transaction): void {
+    const message = transaction.rawPayload?.message;
+    reportIssueToSlack('Bill payment failed at provider (customer refunded)', {
+      reference: transaction.reference,
+      biller: transaction.bill?.billerName,
+      billerId: transaction.bill?.billerId,
+      item: transaction.bill?.paymentItem,
+      billType: transaction.billType,
+      amount: transaction.amount,
+      providerCode: transaction.providerStatusCode,
+      providerMessage: typeof message === 'string' ? message : null,
+    });
+  }
+
+  // "ADL-B123456789" — wallet name, a hyphen, "B" + 9 digits. The bills docs
+  // say the reference "must be pre-fixed with walletName ... e.g rosapay-1234".
   private async generateReference(walletName: string): Promise<string> {
     const provider = this.registry.getProviderForCurrency(CurrencyCode.NGN).key;
     for (let attempt = 0; attempt < 10; attempt++) {
       const digits = String(randomInt(0, 1_000_000_000)).padStart(9, '0');
-      const reference = `${walletName}B${digits}`;
+      const reference = `${walletName}-B${digits}`;
       if (!(await this.transactionsRepo.existsBy({ provider, reference }))) {
         return reference;
       }

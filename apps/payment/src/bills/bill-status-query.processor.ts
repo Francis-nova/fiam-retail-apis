@@ -1,5 +1,5 @@
 import { Logger } from '@nestjs/common';
-import { runWithJobRequestId } from '@app/common';
+import { reportIssueToSlack, runWithJobRequestId } from '@app/common';
 import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 import { BillsService } from './bills.service';
@@ -44,6 +44,13 @@ export class BillStatusQueryProcessor extends WorkerHost {
       if (job.attemptsMade < (job.opts.attempts ?? 1)) return;
       this.logger.error(
         `Bill status query exhausted retries for transaction ${job.data.transactionId} — needs manual reconciliation via VFD support`,
+      );
+      reportIssueToSlack(
+        'Bill status check gave up — needs manual reconciliation',
+        {
+          transactionId: job.data.transactionId,
+          attempts: job.attemptsMade,
+        },
       );
     });
   }

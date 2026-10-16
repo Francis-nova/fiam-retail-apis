@@ -20,6 +20,14 @@ export interface ProviderBillItem {
   isAmountFixed: boolean;
 }
 
+// `valid: false` means the provider says the number isn't recognised. `name`
+// and `address` are the account holder's details when the biller returns them.
+export interface ProviderCustomerValidation {
+  valid: boolean;
+  name: string | null;
+  address: string | null;
+}
+
 export interface ProviderBillPayInput {
   customerId: string;
   amount: Decimal;
@@ -52,7 +60,7 @@ export interface BillsProvider {
     customerId: string;
     biller: Pick<ProviderBiller, 'id' | 'division'>;
     paymentItem: string;
-  }): Promise<boolean>;
+  }): Promise<ProviderCustomerValidation>;
   payBill(input: ProviderBillPayInput): Promise<ProviderBillResult>;
   queryBillStatus(reference: string): Promise<ProviderBillResult>;
 }
