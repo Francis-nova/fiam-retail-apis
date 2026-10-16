@@ -1,5 +1,5 @@
 import { Logger } from '@nestjs/common';
-import { runWithJobRequestId } from '@app/common';
+import { reportIssueToSlack, runWithJobRequestId } from '@app/common';
 import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 import { PayoutsService } from './payouts.service';
@@ -55,6 +55,13 @@ export class PayoutStatusQueryProcessor extends WorkerHost {
     }
     this.logger.error(
       `Payout status query exhausted retries for transaction ${job.data.transactionId} — needs manual reconciliation via VFD support`,
+    );
+    reportIssueToSlack(
+      'Payout status check gave up — needs manual reconciliation',
+      {
+        transactionId: job.data.transactionId,
+        attempts: job.attemptsMade,
+      },
     );
   }
 }

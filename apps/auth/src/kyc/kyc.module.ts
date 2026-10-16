@@ -16,6 +16,7 @@ import { KycController } from './kyc.controller';
 import { QoreIdWebhookController } from './qoreid-webhook.controller';
 import { StorageModule } from '../storage/storage.module';
 import { UsersModule } from '../users/users.module';
+import { MessagingModule } from '../messaging/messaging.module';
 import { TokensModule } from '../tokens/tokens.module';
 
 // Provider is selected by KYC_PROVIDER at runtime, mirroring the pattern
@@ -27,6 +28,7 @@ import { TokensModule } from '../tokens/tokens.module';
     StorageModule,
     UsersModule,
     TokensModule,
+    MessagingModule,
   ],
   controllers: [KycController, QoreIdWebhookController],
   providers: [

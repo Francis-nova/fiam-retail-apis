@@ -27,6 +27,7 @@ import { PendingLogin } from './entities/pending-login.entity';
 import { generateRefreshToken } from '../tokens/token.util';
 import { PaymentProvisioningPublisher } from '../messaging/payment-provisioning.publisher';
 import { NotificationPublisher } from '../messaging/notification.publisher';
+import { SlackNotifier } from '../messaging/slack-notifier.service';
 import { SecurityAlertsService } from '../messaging/security-alerts.service';
 
 export interface RequestMeta {
@@ -93,6 +94,7 @@ export class AuthService {
     @Inject(BVN_PROVIDER) private readonly bvnProvider: BvnProvider,
     private readonly paymentProvisioningPublisher: PaymentProvisioningPublisher,
     private readonly notificationPublisher: NotificationPublisher,
+    private readonly slack: SlackNotifier,
     private readonly securityAlerts: SecurityAlertsService,
   ) {}
 
@@ -199,6 +201,7 @@ export class AuthService {
         throw new UnauthorizedException('Invalid or expired code');
       }
       await this.usersService.markEmailVerified(user.id);
+      this.slack.signedUp(user);
     }
 
     // One active session per customer — a second device resuming the same
@@ -689,6 +692,7 @@ export class AuthService {
     if (!claimed) {
       return;
     }
+    this.slack.kycCompleted(user);
     if (!user.bvn || !user.dateOfBirth) {
       this.logger.error(
         `Cannot request payment provisioning for user ${user.id}: missing bvn/dateOfBirth`,

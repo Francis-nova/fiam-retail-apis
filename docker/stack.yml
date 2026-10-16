@@ -102,6 +102,8 @@ services:
     image: *image
     command: ["node", "dist/apps/auth/apps/auth/src/main.js"]
     environment:
+      SLACK_WEBHOOK_ERRORS: ${SLACK_WEBHOOK_ERRORS:-}
+      SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-}
       NODE_ENV: production
       # Rate-limit counters (shared, survive restarts).
       REDIS_URL: redis://redis:6379
@@ -124,6 +126,10 @@ services:
       # HMAC key for QoreID's webhook signature (x-verifyme-signature); blank = POST /webhooks/qoreid answers 503.
       QOREID_WEBHOOK_SECRET: ${QOREID_WEBHOOK_SECRET:-}
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-}
+      # Slack incoming-webhook URLs, one per channel; blank = event not posted.
+      SLACK_WEBHOOK_SIGNUPS: ${SLACK_WEBHOOK_SIGNUPS:-}
+      SLACK_WEBHOOK_KYC_COMPLETED: ${SLACK_WEBHOOK_KYC_COMPLETED:-}
+      SLACK_WEBHOOK_TIER_UPGRADES: ${SLACK_WEBHOOK_TIER_UPGRADES:-}
       # KYC document storage (any S3-compatible store). The variables are set
       # in docker/.env - for the in-stack MinIO use endpoint=minio, port=9000,
       # ssl=false and the MINIO_ROOT_* values as the keys; for Hetzner Object
@@ -162,6 +168,8 @@ services:
     image: *image
     command: ["node", "dist/apps/payment/apps/payment/src/main.js"]
     environment:
+      SLACK_WEBHOOK_ERRORS: ${SLACK_WEBHOOK_ERRORS:-}
+      SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-}
       NODE_ENV: production
       PAYMENT_PORT: 7003
       PAYMENT_DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@${POSTGRES_HOST:-postgres}:${POSTGRES_PORT:-5432}/fiam_payment
@@ -206,6 +214,8 @@ services:
     image: *image
     command: ["node", "dist/apps/postoffice/apps/postoffice/src/main.js"]
     environment:
+      SLACK_WEBHOOK_ERRORS: ${SLACK_WEBHOOK_ERRORS:-}
+      SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-}
       NODE_ENV: production
       POSTOFFICE_PORT: 7002
       RABBITMQ_URL: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASSWORD}@rabbitmq:5672
@@ -240,6 +250,8 @@ services:
     image: *image
     command: ["node", "dist/apps/admin/apps/admin/src/main.js"]
     environment:
+      SLACK_WEBHOOK_ERRORS: ${SLACK_WEBHOOK_ERRORS:-}
+      SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-}
       NODE_ENV: production
       ADMIN_PORT: 7004
       # Blank = no IP restriction. Set to the office/VPN egress IPs or CIDRs.

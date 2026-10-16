@@ -2,6 +2,7 @@ import { Controller, Logger } from '@nestjs/common';
 import { Ctx, EventPattern, Payload, RmqContext } from '@nestjs/microservices';
 import {
   ACCOUNT_PROVISIONING_REQUESTED_PATTERN,
+  captureServerError,
   runWithMessageRequestId,
 } from '@app/common';
 import type { AccountProvisioningRequestedMessage } from '@app/common';
@@ -48,6 +49,11 @@ export class AccountProvisioningConsumer {
       this.logger.error(
         `Provisioning failed for user ${message.userId}: ${(err as Error).message}`,
       );
+      captureServerError(err, {
+        method: 'RMQ',
+        url: `${ACCOUNT_PROVISIONING_REQUESTED_PATTERN} (account provisioning)`,
+        userId: message.userId,
+      });
       // No requeue — a permanently-failing VFD call (e.g. bad BVN) would
       // otherwise loop forever. Routes to the queue's dead-letter exchange
       // for manual investigation instead.

@@ -9,6 +9,7 @@ import { AuthConfig } from '../config/configuration';
 import { PaymentProvisioningPublisher } from './payment-provisioning.publisher';
 import { PAYMENT_PROVISIONING_CLIENT } from './payment-provisioning-client.token';
 import { NotificationPublisher } from './notification.publisher';
+import { SlackNotifier } from './slack-notifier.service';
 import { SecurityAlertsService } from './security-alerts.service';
 import { POSTOFFICE_NOTIFICATION_CLIENT } from './postoffice-notification-client.token';
 
@@ -61,11 +62,13 @@ import { POSTOFFICE_NOTIFICATION_CLIENT } from './postoffice-notification-client
     PaymentProvisioningPublisher,
     NotificationPublisher,
     SecurityAlertsService,
+    SlackNotifier,
   ],
   exports: [
     PaymentProvisioningPublisher,
     NotificationPublisher,
     SecurityAlertsService,
+    SlackNotifier,
   ],
 })
 export class MessagingModule {}

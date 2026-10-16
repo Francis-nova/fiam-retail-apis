@@ -1,5 +1,5 @@
 import { Logger } from '@nestjs/common';
-import { runWithJobRequestId } from '@app/common';
+import { reportIssueToSlack, runWithJobRequestId } from '@app/common';
 import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Job } from 'bullmq';
@@ -105,6 +105,11 @@ export class TransactionsProcessor extends WorkerHost {
     this.logger.error(
       `Transaction ${job.data.transactionId} failed permanently after ${job.attemptsMade} attempts`,
     );
+    reportIssueToSlack('Deposit could not be credited — failed permanently', {
+      transactionId: job.data.transactionId,
+      attempts: job.attemptsMade,
+      reason: job.failedReason,
+    });
     await this.transactionsRepo.update(job.data.transactionId, {
       status: TransactionStatus.FAILED,
       verifiedAt: new Date(),

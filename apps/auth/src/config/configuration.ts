@@ -59,6 +59,13 @@ export interface AuthConfig {
   rabbitmq: {
     url: string;
   };
+  // One Slack incoming-webhook URL per channel (a webhook is bound to a single
+  // channel). Blank = that event is not posted.
+  slack: {
+    signupsWebhookUrl: string;
+    kycCompletedWebhookUrl: string;
+    tierUpgradesWebhookUrl: string;
+  };
 }
 
 export default (): AuthConfig => ({
@@ -121,5 +128,10 @@ export default (): AuthConfig => ({
   },
   rabbitmq: {
     url: process.env.RABBITMQ_URL ?? 'amqp://guest:guest@localhost:5672',
+  },
+  slack: {
+    signupsWebhookUrl: process.env.SLACK_WEBHOOK_SIGNUPS ?? '',
+    kycCompletedWebhookUrl: process.env.SLACK_WEBHOOK_KYC_COMPLETED ?? '',
+    tierUpgradesWebhookUrl: process.env.SLACK_WEBHOOK_TIER_UPGRADES ?? '',
   },
 });
