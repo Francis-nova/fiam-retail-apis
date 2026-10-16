@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto';
 import { Inject, Injectable, Logger } from '@nestjs/common';
+import Decimal from 'decimal.js';
 import { ConfigService } from '@nestjs/config';
 import { ClientProxy } from '@nestjs/microservices';
 import {
@@ -12,6 +13,9 @@ import { POSTOFFICE_NOTIFICATION_CLIENT } from './postoffice-notification-client
 import { PaymentConfig } from '../config/configuration';
 import { WalletsService } from '../wallets/wallets.service';
 import { Transaction } from '../transactions/entities/transaction.entity';
+import { formatTokenForDisplay } from '../providers/vfd/vfd-bill-token';
+import { BILL_CUSTOMER_LABEL, BILL_TYPE_LABEL } from '../bills/bill-labels';
+import { BillType } from '../transactions/entities/transaction.entity';
 import { PaymentSlackNotifier } from '../slack/payment-slack.notifier';
 import type {
   AlertableTransaction,
@@ -46,6 +50,8 @@ const OUTCOME_BY_EVENT: Record<TransactionNotificationEvent, PaymentOutcome> = {
 };
 
 const RECEIPT_TEMPLATE = 'transaction-receipt';
+// Bill payments (airtime, data, electricity…) have their own receipt.
+const BILL_RECEIPT_TEMPLATE = 'bill-receipt';
 const RECEIPT_DIRECTION: Partial<
   Record<TransactionNotificationEvent, 'credit' | 'debit'>
 > = {
@@ -74,6 +80,9 @@ type NotifiableTransaction = Pick<Transaction, 'id' | 'walletId' | 'amount'> &
       | 'occurredAt'
       | 'createdAt'
       | 'beneficiary'
+      | 'bill'
+      | 'billType'
+      | 'fee'
     >
   >;
 
@@ -135,6 +144,10 @@ export class NotificationsService {
   async notifyTransaction(
     transaction: NotifiableTransaction | null,
     event: TransactionNotificationEvent,
+    // receiptEmail: false holds the email back (bills whose token isn't known
+    // yet send it later through sendBillReceiptEmail). Push and Slack are
+    // unaffected.
+    options: { receiptEmail?: boolean } = {},
   ): Promise<void> {
     try {
       if (!transaction?.walletId) return;
@@ -164,7 +177,9 @@ export class NotificationsService {
       );
 
       // Independent of the push above: an email problem never affects it.
-      await this.sendReceiptEmail(transaction, wallet.userId, event);
+      if (options.receiptEmail !== false) {
+        await this.sendReceiptEmail(transaction, wallet.userId, event);
+      }
     } catch (err) {
       this.logger.warn(
         `Could not queue ${event} notification for ${transaction?.id}: ${(err as Error).message}`,
@@ -179,6 +194,12 @@ export class NotificationsService {
   ): Promise<void> {
     const direction = RECEIPT_DIRECTION[event];
     if (!direction) return;
+    // A bill is not a bank transfer: it has its own receipt, with the biller,
+    // what was bought and, where there is one, the token.
+    if (transaction.bill) {
+      await this.emitBillReceipt(transaction, userId);
+      return;
+    }
     try {
       const contact = await this.lookupContact(userId);
       if (!contact) return;
@@ -217,6 +238,90 @@ export class NotificationsService {
     } catch (err) {
       this.logger.warn(
         `Could not queue receipt email for ${transaction.id}: ${(err as Error).message}`,
+      );
+    }
+  }
+
+  /**
+   * The receipt email for a bill payment, sent on its own (the token turned up
+   * after the payment, or never did: `tokenMissing`). Safe to await; failures
+   * are logged, not thrown.
+   */
+  async sendBillReceiptEmail(
+    transaction: NotifiableTransaction,
+    options: { tokenMissing?: boolean } = {},
+  ): Promise<void> {
+    try {
+      if (!transaction.walletId) return;
+      const wallet = await this.walletsService.findById(transaction.walletId);
+      if (!wallet) return;
+      await this.emitBillReceipt(transaction, wallet.userId, options);
+    } catch (err) {
+      this.logger.warn(
+        `Could not send bill receipt for ${transaction.id}: ${(err as Error).message}`,
+      );
+    }
+  }
+
+  private async emitBillReceipt(
+    transaction: NotifiableTransaction,
+    userId: string,
+    options: { tokenMissing?: boolean } = {},
+  ): Promise<void> {
+    try {
+      const bill = transaction.bill;
+      if (!bill) return;
+      const contact = await this.lookupContact(userId);
+      if (!contact) return;
+
+      const type = transaction.billType ?? BillType.OTHER;
+      const amount = new Decimal(transaction.amount);
+      const fee = new Decimal(transaction.fee ?? 0);
+      const occurred =
+        transaction.occurredAt ?? transaction.createdAt ?? new Date();
+      const extras = (bill.extraTokens ?? []).slice(0, 2);
+
+      const data: Record<string, string> = {
+        name: contact.firstName,
+        firstName: contact.firstName,
+        billType: type,
+        billTypeLabel: BILL_TYPE_LABEL[type],
+        customerLabel: BILL_CUSTOMER_LABEL[type],
+        biller: bill.billerName,
+        plan: bill.paymentItemName,
+        paidFor: bill.customerId,
+        amount: naira(amount.toString()),
+        total: naira(amount.plus(fee).toString()),
+        reference: transaction.reference ?? transaction.id,
+        status: 'Successful',
+        occurredAt: lagosDate(new Date(occurred)),
+      };
+      if (fee.greaterThan(0)) data.fee = naira(fee.toString());
+      if (bill.token) {
+        data.hasToken = 'true';
+        data.token = formatTokenForDisplay(bill.token);
+      } else if (options.tokenMissing) {
+        data.tokenMissing = 'true';
+      }
+      extras.forEach((extra, i) => {
+        data[`extra${i + 1}Label`] = extra.label;
+        data[`extra${i + 1}`] = formatTokenForDisplay(extra.value);
+      });
+
+      this.client.emit(
+        NOTIFICATION_REQUESTED_PATTERN,
+        withRequestId({
+          messageId: randomUUID(),
+          channel: NotificationChannel.EMAIL,
+          recipient: contact.email,
+          template: BILL_RECEIPT_TEMPLATE,
+          data,
+          requestedAt: new Date().toISOString(),
+        }),
+      );
+    } catch (err) {
+      this.logger.warn(
+        `Could not queue bill receipt email for ${transaction.id}: ${(err as Error).message}`,
       );
     }
   }

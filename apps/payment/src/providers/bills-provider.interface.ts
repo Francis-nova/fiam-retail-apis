@@ -47,6 +47,8 @@ export interface ProviderBillResult {
   providerStatusCode: string | null;
   // Utility token / PIN, when the provider returns one.
   token: string | null;
+  // Further codes to enter before it (AEDC key change tokens), in order.
+  extraTokens: { label: string; value: string }[];
   rawPayload: Record<string, unknown> | null;
 }
 

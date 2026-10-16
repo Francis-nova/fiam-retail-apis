@@ -9,6 +9,7 @@ export enum EmailTemplate {
   NEW_DEVICE_LOGIN = 'new-device-login',
   WALLET_FUNDED = 'wallet-funded',
   TRANSACTION_RECEIPT = 'transaction-receipt',
+  BILL_RECEIPT = 'bill-receipt',
   KYC_TIER_APPROVED = 'kyc-tier-approved',
   KYC_TIER_REJECTED = 'kyc-tier-rejected',
   DELETION_REQUEST_RECEIVED = 'deletion-request-received',
@@ -34,6 +35,12 @@ const EMAIL_SUBJECTS: Record<EmailTemplate, SubjectResolver> = {
       : data.direction === 'credit'
         ? 'Money received'
         : 'Money sent',
+  // With a token the token is the news ("Your electricity token"); otherwise
+  // it is a plain confirmation.
+  [EmailTemplate.BILL_RECEIPT]: (data) =>
+    data.hasToken === 'true'
+      ? `Your ${data.billTypeLabel.toLowerCase()} token`
+      : `${data.billTypeLabel} payment successful`,
   [EmailTemplate.KYC_TIER_APPROVED]: (data) =>
     `You're now Tier ${data.tier} on Fiam`,
   [EmailTemplate.KYC_TIER_REJECTED]: 'Update needed on your verification',
