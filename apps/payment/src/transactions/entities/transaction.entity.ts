@@ -87,6 +87,8 @@ export interface BillDetails {
   customerId: string;
   // Utility token or voucher PIN, once the provider has returned one.
   token: string | null;
+  // Codes to enter before the token (AEDC key change tokens), in order.
+  extraTokens?: { label: string; value: string }[];
 }
 
 // Single source of truth for a payment event, from first sight (a payin

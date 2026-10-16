@@ -1,0 +1,39 @@
+extends layout
+include mixins
+
+block content
+  - var hasToken = typeof token !== 'undefined' && token
+  - var isMissing = typeof tokenMissing !== 'undefined' && tokenMissing === 'true'
+  - var title = hasToken ? 'Your ' + billTypeLabel.toLowerCase() + ' token' : billTypeLabel + ' payment successful'
+  - var hasFee = typeof fee !== 'undefined' && fee
+  - var hasPlan = typeof plan !== 'undefined' && plan && plan !== biller
+  +badge('Bill payment', 'debit')
+  +heading(title)
+  +greeting(firstName)
+  +amount('-' + total, 'debit')
+  if hasToken
+    if typeof extra1 !== 'undefined' && extra1
+      p(style="margin:0 0 12px 0; font-size:14px; line-height:1.6; color:#000909;")
+        | Enter these in order on your meter, then your energy token.
+      +tokenBox(extra1Label, extra1)
+      if typeof extra2 !== 'undefined' && extra2
+        +tokenBox(extra2Label, extra2)
+    +tokenBox(typeof extra1 !== 'undefined' && extra1 ? 'Energy token' : 'Your token', token)
+    if billType === 'UTILITY'
+      p(style="margin:4px 0 20px 0; font-size:14px; line-height:1.6; color:#7F7F7F;")
+        | Enter the token on your prepaid meter to load your units. Keep this email as your proof of payment.
+  else if isMissing
+    p(style="margin:0 0 20px 0; padding:14px 16px; background-color:#FFF4CE; border-radius:10px; font-size:14px; line-height:1.6; color:#7A5B00;")
+      | Your payment went through, but your token hasn't been issued yet. We're following it up with the provider. If it doesn't show in your receipt in the app soon, please contact Fiam support with the reference below.
+  +detailsCard()
+    +row('Provider', biller)
+    if hasPlan
+      +row('Plan', plan)
+    +row(customerLabel, paidFor)
+    +row('Amount', amount)
+    if hasFee
+      +row('Fee', fee)
+    +row('Total debited', total)
+    +row('Reference', reference)
+    +row('Status', status)
+    +row('Date', occurredAt)

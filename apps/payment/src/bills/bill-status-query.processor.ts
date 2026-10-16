@@ -6,6 +6,7 @@ import { BillsService } from './bills.service';
 import {
   BILL_STATUS_QUERY_QUEUE,
   BillStatusQueryJobData,
+  FETCH_BILL_TOKEN_JOB,
 } from './bill-status-query.queue';
 
 @Processor(BILL_STATUS_QUERY_QUEUE)
@@ -22,6 +23,11 @@ export class BillStatusQueryProcessor extends WorkerHost {
 
   private async run(job: Job<BillStatusQueryJobData>): Promise<void> {
     const { transactionId } = job.data;
+    if (job.name === FETCH_BILL_TOKEN_JOB) {
+      // Throws while the token isn't issued, so BullMQ retries it.
+      await this.billsService.fetchTokenAndSendReceipt(transactionId);
+      return;
+    }
     const outcome = await this.billsService.syncBillStatus(transactionId);
     if (outcome === 'NOT_FOUND') {
       this.logger.error(
@@ -42,6 +48,14 @@ export class BillStatusQueryProcessor extends WorkerHost {
     if (!job) return;
     return runWithJobRequestId(job, () => {
       if (job.attemptsMade < (job.opts.attempts ?? 1)) return;
+      if (job.name === FETCH_BILL_TOKEN_JOB) {
+        this.logger.error(
+          `Token for transaction ${job.data.transactionId} never arrived after ${job.attemptsMade} attempts`,
+        );
+        return this.billsService.sendReceiptWithoutToken(
+          job.data.transactionId,
+        );
+      }
       this.logger.error(
         `Bill status query exhausted retries for transaction ${job.data.transactionId} — needs manual reconciliation via VFD support`,
       );

@@ -28,6 +28,7 @@ import {
   ProviderBillResult,
   ProviderBiller,
 } from '../bills-provider.interface';
+import { extractBillTokens } from './vfd-bill-token';
 import { extractCustomerInfo } from './vfd-customer-info';
 import { formatDateForVfd } from './vfd-date.util';
 import { normalizeVfdBankList } from './vfd-bank-list.util';
@@ -660,6 +661,7 @@ export class VfdPaymentProvider implements PaymentProvider, BillsProvider {
         outcome: 'REQUERY',
         providerStatusCode: null,
         token: null,
+        extraTokens: [],
         rawPayload: null,
       };
     }
@@ -674,10 +676,12 @@ export class VfdPaymentProvider implements PaymentProvider, BillsProvider {
         `VFD bill pay ${input.reference} for ${input.biller.id} returned ${body?.status ?? 'no status'}: ${body?.message ?? 'no message'}`,
       );
     }
+    const issued = extractBillTokens(body?.data);
     return {
       outcome: this.billOutcome(body?.status),
       providerStatusCode: body?.status ?? null,
-      token: body?.data?.token || null,
+      token: issued.token,
+      extraTokens: issued.extras,
       rawPayload: (body as Record<string, unknown> | null) ?? null,
     };
   }
@@ -697,6 +701,7 @@ export class VfdPaymentProvider implements PaymentProvider, BillsProvider {
         outcome: 'REQUERY',
         providerStatusCode: null,
         token: null,
+        extraTokens: [],
         rawPayload: null,
       };
     }
@@ -711,14 +716,17 @@ export class VfdPaymentProvider implements PaymentProvider, BillsProvider {
         outcome: 'FAILED',
         providerStatusCode: '108',
         token: null,
+        extraTokens: [],
         rawPayload: body as Record<string, unknown>,
       };
     }
     const code = body?.data?.transactionStatus ?? null;
+    const issued = extractBillTokens(body?.data);
     return {
       outcome: this.billOutcome(code),
       providerStatusCode: code,
-      token: body?.data?.token || null,
+      token: issued.token,
+      extraTokens: issued.extras,
       rawPayload: (body as Record<string, unknown> | null) ?? null,
     };
   }

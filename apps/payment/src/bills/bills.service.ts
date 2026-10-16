@@ -32,6 +32,7 @@ import type {
   ProviderBiller,
 } from '../providers/bills-provider.interface';
 import {
+  BillType,
   Transaction,
   TransactionKind,
   TransactionStatus,
@@ -41,6 +42,7 @@ import {
 import {
   BILL_STATUS_QUERY_QUEUE,
   BillStatusQueryJobData,
+  FETCH_BILL_TOKEN_JOB,
   PROCESS_BILL_STATUS_QUERY_JOB,
 } from './bill-status-query.queue';
 import { calculateBillFees } from './bill-fee';
@@ -341,7 +343,7 @@ export class BillsService {
           .then((r) => (r.outcome === 'SUCCESSFUL' ? r : initial))
           .catch(() => initial);
       }
-      await this.markSuccessful(transaction, result.token);
+      await this.markSuccessful(transaction, result);
     } else if (result.outcome === 'FAILED') {
       await this.reverseFailedBill(transaction.id);
     } else {
@@ -365,19 +367,107 @@ export class BillsService {
     return category === 'utility' || category === 'cable tv';
   }
 
+  // Electricity is the bill that is paid for with a token; for those the
+  // receipt email waits until the token is known (see markSuccessful).
+  private expectsToken(transaction: Transaction): boolean {
+    return transaction.billType === BillType.UTILITY;
+  }
+
   private async markSuccessful(
     transaction: Transaction,
-    token: string | null,
+    issued: Pick<ProviderBillResult, 'token' | 'extraTokens'>,
   ): Promise<void> {
+    const bill = transaction.bill
+      ? {
+          ...transaction.bill,
+          token: issued.token ?? transaction.bill.token,
+          extraTokens: issued.extraTokens.length
+            ? issued.extraTokens
+            : transaction.bill.extraTokens,
+        }
+      : null;
     await this.transactionsRepo.update(transaction.id, {
       status: TransactionStatus.SUCCESSFUL,
       verifiedAt: new Date(),
-      ...(token && transaction.bill
-        ? { bill: { ...transaction.bill, token } }
-        : {}),
+      ...(bill ? { bill } : {}),
     });
-    void this.notifications.notifyTransaction(transaction, 'PAYOUT_SUCCESSFUL');
+    const paid = { ...transaction, bill };
+
+    // The token is the point of the email. When it isn't known yet, hold the
+    // email and fetch it (the push still goes out now), rather than sending a
+    // receipt that tells the customer nothing they can use.
+    const holdReceipt = this.expectsToken(transaction) && !bill?.token;
+    void this.notifications.notifyTransaction(paid, 'PAYOUT_SUCCESSFUL', {
+      receiptEmail: !holdReceipt,
+    });
+    if (holdReceipt) {
+      await this.queue
+        .add(
+          FETCH_BILL_TOKEN_JOB,
+          withJobRequestId({ transactionId: transaction.id }),
+          {
+            attempts: 6,
+            delay: 15_000,
+            backoff: { type: 'exponential', delay: 20_000 },
+          },
+        )
+        .catch((err: Error) =>
+          this.logger.error(
+            `Could not queue token fetch for ${transaction.reference}: ${err.message}`,
+          ),
+        );
+    }
     await this.rememberRecipient(transaction);
+  }
+
+  /**
+   * One attempt at getting the token of an already-paid bill and emailing the
+   * receipt with it. Throws while it is still missing so the queue retries.
+   */
+  async fetchTokenAndSendReceipt(
+    transactionId: string,
+  ): Promise<'NOT_FOUND' | 'SENT'> {
+    const transaction = await this.transactionsRepo.findOneBy({
+      id: transactionId,
+    });
+    if (!transaction?.bill) return 'NOT_FOUND';
+    let bill = transaction.bill;
+    if (!bill.token) {
+      const result = await this.registry
+        .getBillsProvider()
+        .queryBillStatus(transaction.reference);
+      if (result.outcome !== 'SUCCESSFUL' || !result.token) {
+        throw new Error(`Token for ${transaction.reference} not issued yet`);
+      }
+      bill = {
+        ...bill,
+        token: result.token,
+        extraTokens: result.extraTokens.length
+          ? result.extraTokens
+          : bill.extraTokens,
+      };
+      await this.transactionsRepo.update(transaction.id, { bill });
+    }
+    await this.notifications.sendBillReceiptEmail({ ...transaction, bill });
+    return 'SENT';
+  }
+
+  // The token never arrived. The customer still paid and the bill went
+  // through, so send the receipt with a note instead of leaving them without
+  // one, and tell the team: the token has to be recovered with VFD.
+  async sendReceiptWithoutToken(transactionId: string): Promise<void> {
+    const transaction = await this.transactionsRepo.findOneBy({
+      id: transactionId,
+    });
+    if (!transaction?.bill) return;
+    await this.notifications.sendBillReceiptEmail(transaction, {
+      tokenMissing: true,
+    });
+    reportIssueToSlack('Electricity token not issued — recover it with VFD', {
+      reference: transaction.reference,
+      biller: transaction.bill.billerName,
+      amount: transaction.amount,
+    });
   }
 
   // Auto-saves the number/meter as a bill beneficiary. Best effort: a problem
@@ -428,7 +518,7 @@ export class BillsService {
     });
 
     if (result.outcome === 'SUCCESSFUL') {
-      await this.markSuccessful(transaction, result.token);
+      await this.markSuccessful(transaction, result);
       return 'SUCCESSFUL';
     }
     if (result.outcome === 'FAILED') {
