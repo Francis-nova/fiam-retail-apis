@@ -711,6 +711,42 @@ export class AuthService {
     });
   }
 
+  // Back-office retry for customers whose first provisioning request failed
+  // (e.g. the provider rejected our credentials) — the one-shot claim in
+  // maybeRequestPaymentProvisioning means nothing else ever re-publishes.
+  // Re-checks the same preconditions and republishes without claiming; safe to
+  // repeat because payment's consumer is idempotent (existing ACTIVE address
+  // short-circuits, and the provider's "client exists" reply counts as success).
+  async retryPaymentProvisioning(
+    userId: string,
+  ): Promise<{ queued: boolean; reason?: string }> {
+    const user = await this.usersService.findById(userId);
+    // Not ACTIVE-only: signup provisions while still finishing verification.
+    if (
+      user.status === UserStatus.SUSPENDED ||
+      user.status === UserStatus.CLOSED
+    ) {
+      return { queued: false, reason: `Account is ${user.status}` };
+    }
+    if (!user.bvnVerifiedAt || !user.bvn || !user.dateOfBirth) {
+      return { queued: false, reason: 'BVN is not verified' };
+    }
+    if (!user.transactionPinHash) {
+      return { queued: false, reason: 'Transaction PIN is not set' };
+    }
+    this.paymentProvisioningPublisher.requestNgnAccountProvisioning({
+      messageId: randomUUID(),
+      userId: user.id,
+      currency: CurrencyCode.NGN,
+      bvn: user.bvn,
+      dateOfBirth: user.dateOfBirth,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      requestedAt: new Date().toISOString(),
+    });
+    return { queued: true };
+  }
+
   async requestPasswordReset(email: string): Promise<{ otp?: string }> {
     const user = await this.usersService.findByEmail(email);
     if (!user || user.status !== UserStatus.ACTIVE) {

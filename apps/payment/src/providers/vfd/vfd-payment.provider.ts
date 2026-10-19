@@ -187,7 +187,7 @@ export class VfdPaymentProvider implements PaymentProvider, BillsProvider {
     });
 
     const response = await this.authorizedFetch(
-      `${walletBaseUrl}/client/tiers/individual?${params.toString()}`,
+      `${walletBaseUrl}/client/create?${params.toString()}`,
       { method: 'POST' },
     );
 

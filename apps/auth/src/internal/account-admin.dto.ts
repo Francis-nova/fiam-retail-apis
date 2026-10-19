@@ -1,4 +1,13 @@
-import { IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import {
+  ArrayMaxSize,
+  ArrayMinSize,
+  IsArray,
+  IsOptional,
+  IsString,
+  IsUUID,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
 
 export class AccountActionDto {
   // Which staff member did it (for the customer-facing record).
@@ -31,4 +40,12 @@ export class UpdateProfileDto {
   @IsString()
   @MaxLength(20)
   phone?: string;
+}
+
+export class RetryProvisioningDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(200)
+  @IsUUID('4', { each: true })
+  userIds: string[];
 }

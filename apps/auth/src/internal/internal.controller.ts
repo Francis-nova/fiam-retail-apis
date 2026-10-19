@@ -20,7 +20,11 @@ import { AccountAdminService } from './account-admin.service';
 import { AuthService } from '../auth/auth.service';
 import { VerifyPinDto } from '../auth/dto/verify-pin.dto';
 import { DeletionService } from '../deletion/deletion.service';
-import { AccountActionDto, UpdateProfileDto } from './account-admin.dto';
+import {
+  AccountActionDto,
+  RetryProvisioningDto,
+  UpdateProfileDto,
+} from './account-admin.dto';
 
 // Consumed by other Fiam services (e.g. payment, to address a transaction
 // email). Not part of the public API, so it's hidden from Swagger.
@@ -73,6 +77,26 @@ export class InternalController {
   @Get('users/:id/transfer-limit')
   async transferLimit(@Param('id', new ParseUUIDPipe()) id: string) {
     return { transferLimit: await this.authService.transferLimit(id) };
+  }
+
+  // Re-publishes the NGN account provisioning request (see
+  // AuthService.retryPaymentProvisioning). Per-user outcome so the console can
+  // report who was queued and who was skipped, and why.
+  @Post('provisioning/retry')
+  @HttpCode(200)
+  async retryProvisioning(@Body() dto: RetryProvisioningDto) {
+    const results: { userId: string; queued: boolean; reason?: string }[] = [];
+    for (const userId of dto.userIds) {
+      try {
+        results.push({
+          userId,
+          ...(await this.authService.retryPaymentProvisioning(userId)),
+        });
+      } catch {
+        results.push({ userId, queued: false, reason: 'User not found' });
+      }
+    }
+    return { results };
   }
 
   // --- Back-office (admin console) account actions ---

@@ -1,5 +1,8 @@
 import {
+  ArrayMaxSize,
+  IsArray,
   IsOptional,
+  IsUUID,
   IsString,
   Matches,
   MaxLength,
@@ -40,4 +43,13 @@ export class ApproveUpgradeDto {
   @IsString()
   @MaxLength(500)
   note?: string;
+}
+
+export class RetryProvisioningDto extends ReasonDto {
+  // Omit to retry every customer still without an account number.
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(200)
+  @IsUUID('4', { each: true })
+  userIds?: string[];
 }
