@@ -311,6 +311,12 @@ export class BillsService {
       );
     });
 
+    // What the item itself says about product/division next to what the biller
+    // list gave us — config, not customer data. Lets a "not in documentation"
+    // rejection be traced to a mismatch.
+    this.logger.log(
+      `Bill item ${item.paymentCode} for ${biller.id}: item productId=${item.productId ?? 'none'} division=${item.division ?? 'none'}; biller list product=${biller.product} division=${biller.division}`,
+    );
     const result = await provider.payBill({
       customerId: dto.customerId,
       amount,

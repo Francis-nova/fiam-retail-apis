@@ -678,7 +678,7 @@ export class VfdPaymentProvider implements PaymentProvider, BillsProvider {
       // The provider's own reason ("Not in the recent documentation" etc.) —
       // what support needs, and it was otherwise only visible in the database.
       this.logger.warn(
-        `VFD bill pay ${input.reference} for ${input.biller.id} returned ${body?.status ?? 'no status'}: ${body?.message ?? 'no message'}`,
+        `VFD bill pay ${input.reference} for ${input.biller.id} returned ${body?.status ?? 'no status'}: ${body?.message ?? 'no message'} (HTTP ${response.status}, body fields [${Object.keys(body ?? {}).join(', ')}], data fields [${Object.keys((body?.data as object) ?? {}).join(', ')}])`,
       );
     }
     const issued = extractBillTokens(body?.data);
