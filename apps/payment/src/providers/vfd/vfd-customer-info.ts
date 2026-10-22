@@ -43,11 +43,40 @@ function extractDetails(
   return details;
 }
 
+// Some billers (IKEDC) wrap the holder's details as
+// { error, status, message, responseCode, responseData: {...} }. Lift the
+// nested objects' fields up and drop the wrapper's own bookkeeping, so the
+// same name/address/detail lookup works on both shapes.
+const ENVELOPE_KEYS = /^(error|status|message|responseCode|responseMessage)$/i;
+
+function flatten(
+  data: Record<string, unknown>,
+  depth = 0,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  const isWrapper = Object.values(data).some(
+    (v) => v && typeof v === 'object' && !Array.isArray(v),
+  );
+  for (const [key, value] of Object.entries(data)) {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      if (depth < 2) {
+        Object.assign(
+          out,
+          flatten(value as Record<string, unknown>, depth + 1),
+        );
+      }
+    } else if (!(isWrapper && ENVELOPE_KEYS.test(key))) {
+      out[key] = value;
+    }
+  }
+  return out;
+}
+
 export function extractCustomerInfo(data: unknown): CustomerInfo {
   if (!data || typeof data !== 'object') {
     return { name: null, address: null, details: [] };
   }
-  const record = data as Record<string, unknown>;
+  const record = flatten(data as Record<string, unknown>);
   let name: string | null = null;
   let address: string | null = null;
   for (const [key, value] of Object.entries(record)) {

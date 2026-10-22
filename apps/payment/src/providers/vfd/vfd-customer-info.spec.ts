@@ -51,19 +51,37 @@ describe('extractCustomerInfo', () => {
     });
   });
 
-  it('lists every readable field, labelled, skipping blanks and objects', () => {
+  it('lists every readable field, labelled, skipping blanks and arrays', () => {
     expect(
       extractCustomerInfo({
         meterNumber: '45012345627',
         tariff_class: 'R2',
         arrears: 0,
         note: '  ',
-        nested: { a: 1 },
+        tags: ['x'],
       }).details,
     ).toEqual([
       { label: 'Meter number', value: '45012345627' },
       { label: 'Tariff class', value: 'R2' },
       { label: 'Arrears', value: '0' },
+    ]);
+  });
+});
+
+describe('extractCustomerInfo with a wrapped biller response', () => {
+  it('reads the holder from responseData and drops the wrapper fields', () => {
+    const info = extractCustomerInfo({
+      error: false,
+      status: 'success',
+      message: 'ok',
+      responseCode: '00',
+      responseData: { customerName: 'ADA OKAFOR', address: '1 Allen Ave' },
+    });
+    expect(info.name).toBe('ADA OKAFOR');
+    expect(info.address).toBe('1 Allen Ave');
+    expect(info.details).toEqual([
+      { label: 'Customer name', value: 'ADA OKAFOR' },
+      { label: 'Address', value: '1 Allen Ave' },
     ]);
   });
 });
