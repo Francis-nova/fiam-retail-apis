@@ -246,8 +246,13 @@ export class BillsService {
       dto.phoneNumber?.trim() || (await this.customerPhone.lookup(userId));
     assertBillerRules({ biller, item, amount, phoneNumber });
 
+    // The account holder's name/address the biller returns for a meter or
+    // smartcard; kept on the transaction so the receipt can serve as proof of
+    // address for a utility bill.
+    let holderName: string | null = null;
+    let holderAddress: string | null = null;
     if (VALIDATION_REQUIRED_CATEGORIES.has(biller.category.toLowerCase())) {
-      const { valid } = await provider.validateBillCustomer({
+      const { valid, name, address } = await provider.validateBillCustomer({
         customerId: dto.customerId,
         biller: this.toKey(dto),
         paymentItem: dto.paymentItem,
@@ -257,6 +262,8 @@ export class BillsService {
           `We couldn't verify that ${biller.name} number. Please check it and try again.`,
         );
       }
+      holderName = name ?? null;
+      holderAddress = address ?? null;
     }
 
     // Charged to the customer on top of the bill; only `amount` goes to VFD.
@@ -305,6 +312,8 @@ export class BillsService {
             paymentItem: item.paymentCode,
             paymentItemName: item.name,
             customerId: dto.customerId,
+            ...(holderName ? { customerName: holderName } : {}),
+            ...(holderAddress ? { customerAddress: holderAddress } : {}),
             token: null,
           },
         }),
@@ -388,7 +397,7 @@ export class BillsService {
 
   private async markSuccessful(
     transaction: Transaction,
-    issued: Pick<ProviderBillResult, 'token' | 'extraTokens'>,
+    issued: Pick<ProviderBillResult, 'token' | 'extraTokens' | 'details'>,
   ): Promise<void> {
     const bill = transaction.bill
       ? {
@@ -397,6 +406,9 @@ export class BillsService {
           extraTokens: issued.extraTokens.length
             ? issued.extraTokens
             : transaction.bill.extraTokens,
+          details: issued.details?.length
+            ? issued.details
+            : transaction.bill.details,
         }
       : null;
     await this.transactionsRepo.update(transaction.id, {
@@ -458,6 +470,7 @@ export class BillsService {
         extraTokens: result.extraTokens.length
           ? result.extraTokens
           : bill.extraTokens,
+        details: result.details?.length ? result.details : bill.details,
       };
       await this.transactionsRepo.update(transaction.id, { bill });
     }

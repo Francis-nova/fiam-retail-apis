@@ -50,3 +50,43 @@ export function formatTokenForDisplay(token: string): string {
     ? (digits.match(/.{1,4}/g) ?? [digits]).join(' ')
     : token;
 }
+
+// Receipt lines a DisCo sometimes returns next to the token (units bought,
+// tariff, VAT, the DisCo's own receipt number). VFD's docs don't list them, so
+// match on a normalised key (case, `_` and `-` ignored) and take whatever is
+// there; labels are what the customer sees, in the order they are shown.
+const DETAIL_KEYS: [string, string[]][] = [
+  ['Receipt no', ['receiptno', 'receiptnumber', 'receiptid', 'rctnum']],
+  [
+    'Units',
+    ['units', 'unit', 'unitsvalue', 'unitspurchased', 'totalunit', 'kwh'],
+  ],
+  ['Tariff class', ['tariffclass', 'tariffname', 'tariffindex', 'tariff']],
+  ['Tariff rate', ['tariffrate', 'rate']],
+  ['VAT amount', ['vatamount', 'vat', 'tax', 'taxamount']],
+  ['VAT rate', ['vatrate', 'taxrate']],
+];
+
+export interface BillDetail {
+  label: string;
+  value: string;
+}
+
+export function extractBillDetails(data: unknown): BillDetail[] {
+  if (!data || typeof data !== 'object') return [];
+  const normalised = new Map<string, unknown>();
+  for (const [key, value] of Object.entries(data as Record<string, unknown>)) {
+    normalised.set(key.toLowerCase().replace(/[^a-z0-9]/g, ''), value);
+  }
+  const details: BillDetail[] = [];
+  for (const [label, keys] of DETAIL_KEYS) {
+    for (const key of keys) {
+      const value = text(normalised.get(key));
+      if (value) {
+        details.push({ label, value });
+        break;
+      }
+    }
+  }
+  return details;
+}

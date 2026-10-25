@@ -85,10 +85,17 @@ export interface BillDetails {
   paymentItemName: string;
   // Phone / meter / smartcard number the bill was paid for.
   customerId: string;
+  // Account holder name / service address the biller returned for the
+  // meter or smartcard, when it returned them.
+  customerName?: string;
+  customerAddress?: string;
   // Utility token or voucher PIN, once the provider has returned one.
   token: string | null;
   // Codes to enter before the token (AEDC key change tokens), in order.
   extraTokens?: { label: string; value: string }[];
+  // Receipt lines the biller returned with the token: units, tariff, VAT, its
+  // own receipt number. Only what it actually sent.
+  details?: { label: string; value: string }[];
 }
 
 // Single source of truth for a payment event, from first sight (a payin
