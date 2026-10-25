@@ -28,7 +28,7 @@ import {
   ProviderBillResult,
   ProviderBiller,
 } from '../bills-provider.interface';
-import { extractBillTokens } from './vfd-bill-token';
+import { extractBillDetails, extractBillTokens } from './vfd-bill-token';
 import { extractCustomerInfo } from './vfd-customer-info';
 import { formatDateForVfd } from './vfd-date.util';
 import { normalizeVfdBankList } from './vfd-bank-list.util';
@@ -687,6 +687,7 @@ export class VfdPaymentProvider implements PaymentProvider, BillsProvider {
       providerStatusCode: body?.status ?? null,
       token: issued.token,
       extraTokens: issued.extras,
+      details: extractBillDetails(body?.data),
       rawPayload: (body as Record<string, unknown> | null) ?? null,
     };
   }
@@ -726,12 +727,17 @@ export class VfdPaymentProvider implements PaymentProvider, BillsProvider {
       };
     }
     const code = body?.data?.transactionStatus ?? null;
+    // Field names only (no values): shows which receipt lines VFD really sends.
+    this.logger.log(
+      `VFD bill status ${reference}: data fields [${Object.keys((body?.data as object) ?? {}).join(', ')}]`,
+    );
     const issued = extractBillTokens(body?.data);
     return {
       outcome: this.billOutcome(code),
       providerStatusCode: code,
       token: issued.token,
       extraTokens: issued.extras,
+      details: extractBillDetails(body?.data),
       rawPayload: (body as Record<string, unknown> | null) ?? null,
     };
   }

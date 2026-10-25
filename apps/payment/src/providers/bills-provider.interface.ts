@@ -54,6 +54,8 @@ export interface ProviderBillResult {
   token: string | null;
   // Further codes to enter before it (AEDC key change tokens), in order.
   extraTokens: { label: string; value: string }[];
+  // Receipt lines the biller returned with the token (units, tariff, VAT…).
+  details?: { label: string; value: string }[];
   rawPayload: Record<string, unknown> | null;
 }
 
