@@ -57,7 +57,10 @@ export function formatTokenForDisplay(token: string): string {
 // there; labels are what the customer sees, in the order they are shown.
 const DETAIL_KEYS: [string, string[]][] = [
   ['Receipt no', ['receiptno', 'receiptnumber', 'receiptid', 'rctnum']],
-  ['Units', ['units', 'unit', 'unitsvalue', 'unitspurchased', 'totalunit', 'kwh']],
+  [
+    'Units',
+    ['units', 'unit', 'unitsvalue', 'unitspurchased', 'totalunit', 'kwh'],
+  ],
   ['Tariff class', ['tariffclass', 'tariffname', 'tariffindex', 'tariff']],
   ['Tariff rate', ['tariffrate', 'rate']],
   ['VAT amount', ['vatamount', 'vat', 'tax', 'taxamount']],
