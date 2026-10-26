@@ -13,6 +13,7 @@ import { AuthModule } from './auth/auth.module';
 import { InternalModule } from './internal/internal.module';
 import { DeletionModule } from './deletion/deletion.module';
 import { HealthController } from './health/health.controller';
+import { AppConfigController } from './app-config/app-config.controller';
 
 @Module({
   imports: [
@@ -34,6 +35,6 @@ import { HealthController } from './health/health.controller';
     InternalModule,
     DeletionModule,
   ],
-  controllers: [HealthController],
+  controllers: [HealthController, AppConfigController],
 })
 export class AppModule {}

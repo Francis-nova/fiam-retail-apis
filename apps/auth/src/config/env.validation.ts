@@ -35,6 +35,9 @@ interface EnvVars {
   MINIO_KEY_PREFIX: string;
   MINIO_ALLOW_BUCKET_ROOT: 'true' | 'false';
   RABBITMQ_URL: string;
+  APP_ANDROID_MIN_VERSION_CODE: number;
+  APP_ANDROID_LATEST_VERSION_CODE: number;
+  APP_ANDROID_STORE_URL: string;
 }
 
 export const envSchema = Joi.object<EnvVars>({
@@ -89,6 +92,12 @@ export const envSchema = Joi.object<EnvVars>({
   RABBITMQ_URL: Joi.string()
     .uri({ scheme: ['amqp', 'amqps'] })
     .default('amqp://guest:guest@localhost:5672'),
+  // Mobile update prompt (GET /app-config). Android versionCode numbers; 0 = off.
+  APP_ANDROID_MIN_VERSION_CODE: Joi.number().integer().min(0).default(0),
+  APP_ANDROID_LATEST_VERSION_CODE: Joi.number().integer().min(0).default(0),
+  APP_ANDROID_STORE_URL: Joi.string()
+    .uri()
+    .default('https://play.google.com/store/apps/details?id=com.usefiam'),
 });
 
 export function validate(config: Record<string, unknown>) {
