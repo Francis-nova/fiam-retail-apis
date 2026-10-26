@@ -126,6 +126,11 @@ services:
       # HMAC key for QoreID's webhook signature (x-verifyme-signature); blank = POST /webhooks/qoreid answers 503.
       QOREID_WEBHOOK_SECRET: ${QOREID_WEBHOOK_SECRET:-}
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-}
+      # Mobile update prompt (GET /app-config): Android versionCodes. Below MIN the
+      # app blocks until updated; below LATEST it only suggests. 0 = off.
+      APP_ANDROID_MIN_VERSION_CODE: ${APP_ANDROID_MIN_VERSION_CODE:-0}
+      APP_ANDROID_LATEST_VERSION_CODE: ${APP_ANDROID_LATEST_VERSION_CODE:-0}
+      APP_ANDROID_STORE_URL: ${APP_ANDROID_STORE_URL:-https://play.google.com/store/apps/details?id=com.usefiam}
       # Slack incoming-webhook URLs, one per channel; blank = event not posted.
       SLACK_WEBHOOK_SIGNUPS: ${SLACK_WEBHOOK_SIGNUPS:-}
       SLACK_WEBHOOK_KYC_COMPLETED: ${SLACK_WEBHOOK_KYC_COMPLETED:-}

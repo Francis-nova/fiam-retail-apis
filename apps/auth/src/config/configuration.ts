@@ -61,6 +61,16 @@ export interface AuthConfig {
   };
   // One Slack incoming-webhook URL per channel (a webhook is bound to a single
   // channel). Blank = that event is not posted.
+  // What the mobile app compares its own build against at launch. Below
+  // minVersionCode the app blocks until the customer updates; below
+  // latestVersionCode it only suggests it. 0 = no requirement.
+  appVersion: {
+    android: {
+      minVersionCode: number;
+      latestVersionCode: number;
+      storeUrl: string;
+    };
+  };
   slack: {
     signupsWebhookUrl: string;
     kycCompletedWebhookUrl: string;
@@ -128,6 +138,21 @@ export default (): AuthConfig => ({
   },
   rabbitmq: {
     url: process.env.RABBITMQ_URL ?? 'amqp://guest:guest@localhost:5672',
+  },
+  appVersion: {
+    android: {
+      minVersionCode: parseInt(
+        process.env.APP_ANDROID_MIN_VERSION_CODE ?? '0',
+        10,
+      ),
+      latestVersionCode: parseInt(
+        process.env.APP_ANDROID_LATEST_VERSION_CODE ?? '0',
+        10,
+      ),
+      storeUrl:
+        process.env.APP_ANDROID_STORE_URL ??
+        'https://play.google.com/store/apps/details?id=com.usefiam',
+    },
   },
   slack: {
     signupsWebhookUrl: process.env.SLACK_WEBHOOK_SIGNUPS ?? '',
