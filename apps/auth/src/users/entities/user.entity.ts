@@ -106,6 +106,25 @@ export class User {
   @Column({ name: 'device_limit_until', type: 'timestamptz', nullable: true })
   deviceLimitUntil: Date | null;
 
+  // Customer-chosen payout caps (naira). Null = use the tier ceiling.
+  @Column({
+    name: 'transfer_limit_per_txn',
+    type: 'numeric',
+    precision: 18,
+    scale: 2,
+    nullable: true,
+  })
+  transferLimitPerTxn: string | null;
+
+  @Column({
+    name: 'transfer_limit_daily',
+    type: 'numeric',
+    precision: 18,
+    scale: 2,
+    nullable: true,
+  })
+  transferLimitDaily: string | null;
+
   // Brute-force counters — see UsersService.guardedVerify.
   @Column({ name: 'password_failed_attempts', type: 'int', default: 0 })
   passwordFailedAttempts: number;

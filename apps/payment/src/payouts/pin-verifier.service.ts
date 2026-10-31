@@ -18,6 +18,14 @@ export interface TransferLimit {
   until: string;
 }
 
+// The customer's own payout caps (else tier ceilings) from auth. null = none.
+export interface TransferCaps {
+  perTransfer: string | null;
+  daily: string | null;
+  tierPerTransfer: string | null;
+  tierDaily: string | null;
+}
+
 // The transaction PIN lives in apps/auth. Payouts ask it to check the PIN
 // (over its internal, shared-secret API) as part of the request that moves
 // the money, so the PIN can't be skipped by calling /payouts directly.
@@ -33,7 +41,10 @@ export class PinVerifierService {
   async assertValid(
     userId: string,
     pin: string,
-  ): Promise<{ transferLimit: TransferLimit | null }> {
+  ): Promise<{
+    transferLimit: TransferLimit | null;
+    caps: TransferCaps | null;
+  }> {
     const { internalUrl, internalApiKey } = this.configService.get('auth', {
       infer: true,
     });
@@ -70,8 +81,13 @@ export class PinVerifierService {
     if (response.ok) {
       const body = (await response.json()) as {
         transferLimit?: TransferLimit | null;
+        caps?: TransferCaps;
       };
-      return { transferLimit: body.transferLimit ?? null };
+      // An auth that predates caps sends none: payouts still work, uncapped.
+      return {
+        transferLimit: body.transferLimit ?? null,
+        caps: body.caps ?? null,
+      };
     }
     // 403, not 401: a wrong PIN here must not read as an expired session
     // (the app signs the customer out on any 401 from this API).
@@ -108,6 +124,26 @@ export class PinVerifierService {
         transferLimit?: TransferLimit | null;
       };
       return body.transferLimit ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  // Informational (limits screen), so it fails soft like getTransferLimit.
+  async getTransferCaps(userId: string): Promise<TransferCaps | null> {
+    const { internalUrl, internalApiKey } = this.configService.get('auth', {
+      infer: true,
+    });
+    if (!internalApiKey) return null;
+    try {
+      const response = await fetch(
+        `${internalUrl}/internal/users/${encodeURIComponent(userId)}/transfer-caps`,
+        {
+          headers: { 'x-internal-key': internalApiKey },
+          signal: AbortSignal.timeout(AUTH_TIMEOUT_MS),
+        },
+      );
+      return response.ok ? ((await response.json()) as TransferCaps) : null;
     } catch {
       return null;
     }

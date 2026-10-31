@@ -39,6 +39,13 @@ export class PayoutsController {
     return this.payoutsService.transferLimitStatus(user.userId);
   }
 
+  @Get('limits')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  transferLimits(@CurrentUser() user: AuthenticatedUser) {
+    return this.payoutsService.transferCapsStatus(user.userId);
+  }
+
   @Post()
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()

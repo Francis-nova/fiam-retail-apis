@@ -18,19 +18,28 @@ function mockFetch(status: number, body: unknown = { transferLimit: null }) {
   return fn;
 }
 
+const CAPS = {
+  perTransfer: '200000.00',
+  daily: '200000.00',
+  tierPerTransfer: '200000.00',
+  tierDaily: '200000.00',
+};
+
 describe('PinVerifierService', () => {
   it('returns the outflow restriction reported by auth', async () => {
     const limit = { amount: '20000.00', since: 'a', until: 'b' };
-    mockFetch(200, { transferLimit: limit });
+    mockFetch(200, { transferLimit: limit, caps: CAPS });
     await expect(makeService().assertValid('u1', '1234')).resolves.toEqual({
       transferLimit: limit,
+      caps: CAPS,
     });
   });
 
   it('passes on 200 and calls the internal endpoint with the key and PIN', async () => {
-    const fetchMock = mockFetch(200);
+    const fetchMock = mockFetch(200, { caps: CAPS });
     await expect(makeService().assertValid('u1', '1234')).resolves.toEqual({
       transferLimit: null,
+      caps: CAPS,
     });
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe('http://auth:7001/internal/users/u1/verify-pin');
@@ -66,5 +75,13 @@ describe('PinVerifierService', () => {
     await expect(
       makeService('').assertValid('u1', '1234'),
     ).rejects.toMatchObject({ status: 503 });
+  });
+
+  it('returns null caps when auth predates them', async () => {
+    mockFetch(200, {});
+    await expect(makeService().assertValid('u1', '1234')).resolves.toEqual({
+      transferLimit: null,
+      caps: null,
+    });
   });
 });

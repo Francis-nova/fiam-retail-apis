@@ -2,6 +2,7 @@ import { randomInt } from 'crypto';
 import {
   BadRequestException,
   ForbiddenException,
+  ServiceUnavailableException,
   Inject,
   Injectable,
   Logger,
@@ -47,7 +48,7 @@ import { ResolveRecipientDto } from './dto/resolve-recipient.dto';
 import { InitiatePayoutDto } from './dto/initiate-payout.dto';
 import { calculateTransferFee } from './fee.util';
 import { PinVerifierService } from './pin-verifier.service';
-import type { TransferLimit } from './pin-verifier.service';
+import type { TransferCaps, TransferLimit } from './pin-verifier.service';
 
 @Injectable()
 export class PayoutsService {
@@ -125,11 +126,14 @@ export class PayoutsService {
     dto: InitiatePayoutDto,
   ): Promise<Transaction> {
     // First thing, before anything is looked up or reserved.
-    const { transferLimit } = await this.pinVerifier.assertValid(
+    const { transferLimit, caps } = await this.pinVerifier.assertValid(
       userId,
       dto.pin,
     );
 
+    const { enforce: enforceCaps } = this.configService.get('transferCaps', {
+      infer: true,
+    });
     const provider = this.registry.getProviderForCurrency(CurrencyCode.NGN);
     const { walletName } = this.configService.get('vfd', { infer: true });
 
@@ -213,6 +217,9 @@ export class PayoutsService {
         amount,
         transferLimit,
       );
+      if (caps && enforceCaps) {
+        await this.assertWithinCaps(manager, wallet.id, amount, caps);
+      }
       return manager.save(
         Transaction,
         manager.create(Transaction, {
@@ -368,6 +375,64 @@ export class PayoutsService {
         until: limit.until,
       });
     }
+  }
+
+  // Midnight in Lagos (UTC+1, no DST) — when the daily total resets.
+  private startOfLagosDay(): Date {
+    const hour = 3_600_000;
+    const day = 24 * hour;
+    return new Date(Math.floor((Date.now() + hour) / day) * day - hour);
+  }
+
+  // The customer's own per-transfer and daily caps (default: tier ceiling).
+  private async assertWithinCaps(
+    manager: EntityManager,
+    walletId: string,
+    amount: Decimal,
+    caps: TransferCaps,
+  ): Promise<void> {
+    const fmt = (n: Decimal.Value) =>
+      `₦${new Decimal(n).toNumber().toLocaleString('en-NG', { maximumFractionDigits: 2 })}`;
+    if (caps.perTransfer && amount.greaterThan(caps.perTransfer)) {
+      throw new ForbiddenException({
+        statusCode: 403,
+        code: 'TRANSFER_LIMIT',
+        message: `This is more than your ${fmt(caps.perTransfer)} per-transfer limit. You can change it in Settings.`,
+      });
+    }
+    if (!caps.daily) return;
+    const used = await this.outflowSince(
+      manager,
+      walletId,
+      this.startOfLagosDay(),
+    );
+    const remaining = Decimal.max(new Decimal(caps.daily).minus(used), 0);
+    if (amount.greaterThan(remaining)) {
+      throw new ForbiddenException({
+        statusCode: 403,
+        code: 'TRANSFER_LIMIT',
+        message: `This would take you over your ${fmt(caps.daily)} daily limit. You can send ${fmt(remaining)} more today.`,
+        remaining: remaining.toFixed(2),
+      });
+    }
+  }
+
+  // Limits screen: caps in force, tier ceilings, and today's usage.
+  async transferCapsStatus(userId: string) {
+    const caps = await this.pinVerifier.getTransferCaps(userId);
+    if (!caps) throw new ServiceUnavailableException('Try again shortly');
+    const wallet = await this.walletsService.findByUserAndCurrency(
+      userId,
+      CurrencyCode.NGN,
+    );
+    const used = wallet
+      ? await this.outflowSince(
+          this.dataSource.manager,
+          wallet.id,
+          this.startOfLagosDay(),
+        )
+      : new Decimal(0);
+    return { ...caps, usedToday: used.toFixed(2) };
   }
 
   // For the transfer screen: is a limit active, and how much is left of it.

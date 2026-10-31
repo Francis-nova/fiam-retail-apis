@@ -60,7 +60,10 @@ export class InternalController {
     await this.authService.verifyTransactionPin(id, dto.pin);
     // The PIN is right — also tell payment about any outflow restriction so
     // it can enforce it in the same request (one round trip, no race).
-    return { transferLimit: await this.authService.transferLimit(id) };
+    return {
+      transferLimit: await this.authService.transferLimit(id),
+      caps: await this.authService.transferCaps(id),
+    };
   }
 
   // Support: lets a customer back in after repeated wrong password/PIN tries.
@@ -77,6 +80,12 @@ export class InternalController {
   @Get('users/:id/transfer-limit')
   async transferLimit(@Param('id', new ParseUUIDPipe()) id: string) {
     return { transferLimit: await this.authService.transferLimit(id) };
+  }
+
+  // The customer's own payout caps (else tier ceilings), for the limits screen.
+  @Get('users/:id/transfer-caps')
+  transferCaps(@Param('id', new ParseUUIDPipe()) id: string) {
+    return this.authService.transferCaps(id);
   }
 
   // Re-publishes the NGN account provisioning request (see
