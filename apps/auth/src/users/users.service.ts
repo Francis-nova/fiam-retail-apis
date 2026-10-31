@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   HttpException,
   HttpStatus,
   Injectable,
@@ -14,6 +15,7 @@ import {
   User,
   UserStatus,
 } from './entities/user.entity';
+import { TIER_LIMITS } from './tier-limits';
 
 // Emails are case-insensitive in practice (every real provider treats them
 // that way) but Postgres' unique index isn't — normalize on every write and
@@ -293,6 +295,64 @@ export class UsersService {
        WHERE id = $1`,
       [userId, this.deviceLimitHours],
     );
+  }
+
+  /**
+   * Payout caps in force: the customer's own setting, else the tier ceiling.
+   * `null` = no cap. `tier*` are the ceilings the customer cannot exceed.
+   */
+  transferCapsFor(
+    user: Pick<User, 'tier' | 'transferLimitPerTxn' | 'transferLimitDaily'>,
+  ) {
+    const t = TIER_LIMITS[user.tier];
+    const str = (n: number | null) => (n === null ? null : n.toFixed(2));
+    const tierPerTransfer = str(t.maxPerTransfer);
+    const tierDaily = str(t.maxDailyTransfer);
+    return {
+      perTransfer: user.transferLimitPerTxn ?? tierPerTransfer,
+      daily: user.transferLimitDaily ?? tierDaily,
+      tierPerTransfer,
+      tierDaily,
+    };
+  }
+
+  // null resets that cap to the tier ceiling.
+  async setTransferCaps(
+    id: string,
+    perTransfer: number | null,
+    daily: number | null,
+  ) {
+    const user = await this.findById(id);
+    const t = TIER_LIMITS[user.tier];
+    const fmt = (n: number | null) => (n === null ? null : n.toFixed(2));
+    for (const [name, value, ceiling] of [
+      ['per-transfer', perTransfer, t.maxPerTransfer],
+      ['daily', daily, t.maxDailyTransfer],
+    ] as const) {
+      if (value !== null && ceiling !== null && value > ceiling) {
+        throw new BadRequestException(
+          `Your ${name} limit can't be more than ₦${ceiling.toLocaleString('en-NG')} on your tier`,
+        );
+      }
+    }
+    const effective = this.transferCapsFor({
+      tier: user.tier,
+      transferLimitPerTxn: fmt(perTransfer),
+      transferLimitDaily: fmt(daily),
+    });
+    if (
+      effective.daily !== null &&
+      Number(effective.perTransfer) > Number(effective.daily)
+    ) {
+      throw new BadRequestException(
+        "Your per-transfer limit can't be more than your daily limit",
+      );
+    }
+    await this.usersRepo.update(id, {
+      transferLimitPerTxn: fmt(perTransfer),
+      transferLimitDaily: fmt(daily),
+    });
+    return effective;
   }
 
   /**

@@ -407,6 +407,20 @@ export class AuthService {
     await this.maybeRequestPaymentProvisioning(updated);
   }
 
+  async transferCaps(userId: string) {
+    return this.usersService.transferCapsFor(
+      await this.usersService.findById(userId),
+    );
+  }
+
+  setTransferCaps(
+    userId: string,
+    perTransfer: number | null,
+    daily: number | null,
+  ) {
+    return this.usersService.setTransferCaps(userId, perTransfer, daily);
+  }
+
   async transferLimit(userId: string) {
     return this.usersService.transferLimitFor(
       await this.usersService.findById(userId),

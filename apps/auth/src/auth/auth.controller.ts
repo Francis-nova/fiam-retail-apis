@@ -6,6 +6,7 @@ import {
   HttpCode,
   HttpStatus,
   Post,
+  Put,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -27,6 +28,7 @@ import { SetPinDto } from './dto/set-pin.dto';
 import { VerifyLoginPinDto } from './dto/verify-login-pin.dto';
 import { VerifyPinDto } from './dto/verify-pin.dto';
 import { ResetPinDto } from './dto/reset-pin.dto';
+import { SetTransferLimitsDto } from './dto/set-transfer-limits.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { JwtAuthGuard } from '../tokens/jwt-auth.guard';
 import { CurrentUser } from '../tokens/current-user.decorator';
@@ -146,6 +148,27 @@ export class AuthController {
       dto.currentPassword,
       dto.newPassword,
       dto.confirmNewPassword,
+    );
+  }
+
+  @Get('transfer-limits')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  transferLimits(@CurrentUser() user: AuthenticatedUser) {
+    return this.authService.transferCaps(user.userId);
+  }
+
+  @Put('transfer-limits')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  setTransferLimits(
+    @Body() dto: SetTransferLimitsDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.authService.setTransferCaps(
+      user.userId,
+      dto.perTransfer,
+      dto.daily,
     );
   }
 
