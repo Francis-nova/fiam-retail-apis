@@ -6,6 +6,9 @@ export interface TierLimit {
   // Naira. `null` means no limit (Tier 3 under the CBN framework).
   maxSingleDeposit: number | null;
   maxCumulativeBalance: number | null;
+  // Ceilings for the customer's own transfer limits (payouts). `null` = none.
+  maxPerTransfer: number | null;
+  maxDailyTransfer: number | null;
 }
 
 // CBN Tiered Know-Your-Customer (KYC) Requirements for banks/OFIs — the
@@ -18,17 +21,23 @@ export const TIER_LIMITS: Record<CustomerTier, TierLimit> = {
     label: 'Tier 1 · Basic',
     maxSingleDeposit: 50_000,
     maxCumulativeBalance: 300_000,
+    maxPerTransfer: 200_000,
+    maxDailyTransfer: 200_000,
   },
   [CustomerTier.TIER_2]: {
     tier: CustomerTier.TIER_2,
     label: 'Tier 2 · Standard',
     maxSingleDeposit: 200_000,
     maxCumulativeBalance: 500_000,
+    maxPerTransfer: 5_000_000,
+    maxDailyTransfer: 5_000_000,
   },
   [CustomerTier.TIER_3]: {
     tier: CustomerTier.TIER_3,
     label: 'Tier 3 · Premium',
     maxSingleDeposit: null,
     maxCumulativeBalance: null,
+    maxPerTransfer: 5_000_000,
+    maxDailyTransfer: 10_000_000,
   },
 };

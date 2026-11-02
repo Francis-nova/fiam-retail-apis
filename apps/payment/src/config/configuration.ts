@@ -26,6 +26,11 @@ export interface PaymentConfig {
     internalUrl: string;
     internalApiKey: string;
   };
+  // Off until the customer/tier transfer caps are switched on (see
+  // PayoutsService.assertWithinCaps); safe to deploy payment and auth in any order.
+  transferCaps: {
+    enforce: boolean;
+  };
   payments: {
     // Raw config strings (e.g. 'vfd'), same lowercase convention as
     // SMS_PROVIDER/KYC_PROVIDER — mapped to PaymentProviderKey by
@@ -83,6 +88,9 @@ export default (): PaymentConfig => ({
   auth: {
     internalUrl: process.env.AUTH_INTERNAL_URL ?? 'http://localhost:7001',
     internalApiKey: process.env.INTERNAL_API_KEY ?? '',
+  },
+  transferCaps: {
+    enforce: process.env.TRANSFER_CAPS_ENFORCED === 'true',
   },
   payments: {
     // Extensible: PAYMENT_PROVIDER_USD, PAYMENT_PROVIDER_GBP, etc. join this

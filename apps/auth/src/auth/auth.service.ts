@@ -407,6 +407,24 @@ export class AuthService {
     await this.maybeRequestPaymentProvisioning(updated);
   }
 
+  async transferCaps(userId: string) {
+    return this.usersService.transferCapsFor(
+      await this.usersService.findById(userId),
+    );
+  }
+
+  // Changing a limit is PIN-gated: a stolen session must not be able to
+  // raise the cap before draining the wallet.
+  async setTransferCaps(
+    userId: string,
+    pin: string,
+    perTransfer: number | null,
+    daily: number | null,
+  ) {
+    await this.verifyTransactionPin(userId, pin);
+    return this.usersService.setTransferCaps(userId, perTransfer, daily);
+  }
+
   async transferLimit(userId: string) {
     return this.usersService.transferLimitFor(
       await this.usersService.findById(userId),

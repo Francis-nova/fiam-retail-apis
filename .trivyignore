@@ -1,0 +1,5 @@
+# decode-uri-component 0.2.2 (via minio -> query-string@7): DoS in decode on
+# malformed input. minio only calls query-string's stringify, never parse, so
+# the vulnerable path is unreachable; minio 8.0.7 pins query-string ^7 and the
+# fixed 0.5.x breaks it. Remove once minio drops/upgrades query-string.
+CVE-2026-118664 exp:2026-12-31

@@ -24,6 +24,7 @@ import { WalletsService } from '../wallets/wallets.service';
 import { AddressService } from '../wallets/address.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PinVerifierService } from '../payouts/pin-verifier.service';
+import { PayoutsService } from '../payouts/payouts.service';
 import { PAYMENT_PROVIDER_REGISTRY } from '../providers/payment-provider.registry';
 import type { PaymentProviderRegistry } from '../providers/payment-provider.registry';
 import type {
@@ -85,6 +86,7 @@ export class BillsService {
     private readonly configService: ConfigService<PaymentConfig, true>,
     private readonly customerPhone: CustomerPhoneService,
     private readonly billBeneficiaries: BillBeneficiariesService,
+    private readonly payouts: PayoutsService,
   ) {}
 
   // ---- Catalogue (read-only) ----------------------------------------------
@@ -207,7 +209,7 @@ export class BillsService {
 
   async payBill(userId: string, dto: PayBillDto): Promise<Transaction> {
     // First, before anything is looked up or reserved.
-    await this.pinVerifier.assertValid(userId, dto.pin);
+    const { caps } = await this.pinVerifier.assertValid(userId, dto.pin);
 
     const provider = this.registry.getBillsProvider();
     const { walletName } = this.configService.get('vfd', { infer: true });
@@ -287,6 +289,8 @@ export class BillsService {
         wallet.id,
         debit,
       );
+      // After the wallet row is locked, same as payouts.
+      await this.payouts.checkCaps(manager, wallet.id, amount, caps);
       return manager.save(
         Transaction,
         manager.create(Transaction, {
