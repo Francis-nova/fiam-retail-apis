@@ -9,6 +9,7 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Put,
   ServiceUnavailableException,
   UseGuards,
 } from '@nestjs/common';
@@ -94,6 +95,19 @@ export class InternalController {
       status: after.status,
       providerStatusCode: after.providerStatusCode,
     };
+  }
+
+  @Get('settings/free-payouts')
+  async freePayouts() {
+    return { enabled: await this.payouts.freePayoutsEnabled() };
+  }
+
+  @Put('settings/free-payouts')
+  setFreePayouts(@Body() body: { enabled?: unknown }) {
+    if (typeof body.enabled !== 'boolean') {
+      throw new BadRequestException('enabled must be true or false');
+    }
+    return this.payouts.setFreePayoutsEnabled(body.enabled);
   }
 
   @Get('reconciliation')

@@ -26,8 +26,11 @@ export class PayoutsController {
   @Get('fee')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  calculateFee(@Query('amount') amount: string) {
-    return this.payoutsService.calculateFee(amount);
+  calculateFee(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('amount') amount: string,
+  ) {
+    return this.payoutsService.calculateFee(user.userId, amount);
   }
 
   // Lets the transfer screen show the new-device limit (CBN circular) and
