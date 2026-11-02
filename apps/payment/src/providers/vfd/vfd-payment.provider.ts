@@ -92,7 +92,7 @@ export class VfdPaymentProvider implements PaymentProvider, BillsProvider {
     );
     if (!consumerKey || !consumerSecret) {
       throw new ServiceUnavailableException(
-        'VFD is not configured (missing VFD_CONSUMER_KEY / VFD_CONSUMER_SECRET)',
+        'Payments are temporarily unavailable. Please try again shortly.',
       );
     }
 
@@ -113,7 +113,9 @@ export class VfdPaymentProvider implements PaymentProvider, BillsProvider {
       this.logger.error(
         `VFD token request failed: ${response.status} ${safeJson(body)}`,
       );
-      throw new ServiceUnavailableException('Failed to authenticate with VFD');
+      throw new ServiceUnavailableException(
+        'Payments are temporarily unavailable. Please try again shortly.',
+      );
     }
 
     // expires_in from VFD is effectively infinite for validityTime "-1"
@@ -200,7 +202,7 @@ export class VfdPaymentProvider implements PaymentProvider, BillsProvider {
         `VFD account creation returned no parseable body: ${response.status}`,
       );
       throw new ServiceUnavailableException(
-        'VFD account creation is currently unavailable',
+        'Account creation is currently unavailable. Please try again shortly.',
       );
     }
 
@@ -214,7 +216,7 @@ export class VfdPaymentProvider implements PaymentProvider, BillsProvider {
           `VFD account creation "${body.status}" had no accountNo: ${safeJson(body)}`,
         );
         throw new ServiceUnavailableException(
-          'VFD account creation is currently unavailable',
+          'Account creation is currently unavailable. Please try again shortly.',
         );
       }
       const name = [
@@ -240,7 +242,7 @@ export class VfdPaymentProvider implements PaymentProvider, BillsProvider {
         `VFD account creation rejected: ${body.status} ${body.message}`,
       );
       throw new BadRequestException(
-        body.message ?? 'VFD rejected this account creation request',
+        'We could not create your account with the details provided. Please check them and try again.',
       );
     }
 
@@ -251,7 +253,7 @@ export class VfdPaymentProvider implements PaymentProvider, BillsProvider {
       `VFD account creation failed: ${response.status} ${safeJson(body)}`,
     );
     throw new ServiceUnavailableException(
-      'VFD account creation is currently unavailable',
+      'Account creation is currently unavailable. Please try again shortly.',
     );
   }
 
@@ -276,7 +278,7 @@ export class VfdPaymentProvider implements PaymentProvider, BillsProvider {
         `VFD bank list failed: ${response.status} ${safeJson(body)}`,
       );
       throw new ServiceUnavailableException(
-        'Unable to fetch bank list from VFD',
+        'Unable to fetch the bank list right now. Please try again.',
       );
     }
     return normalizeVfdBankList(body.data);
@@ -311,7 +313,7 @@ export class VfdPaymentProvider implements PaymentProvider, BillsProvider {
         `VFD account enquiry failed: ${response.status} ${safeJson(body)}`,
       );
       throw new ServiceUnavailableException(
-        'Unable to fetch account details from VFD',
+        'Unable to fetch account details right now. Please try again.',
       );
     }
     return {
