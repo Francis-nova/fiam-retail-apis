@@ -55,12 +55,21 @@ export class ReconciliationService {
           [CurrencyCode.NGN],
         ),
         this.dataSource.query<
-          { credits: string; debits: string; fees: string; count: number }[]
+          {
+            credits: string;
+            debits: string;
+            fees: string;
+            vat: string;
+            stampDuty: string;
+            count: number;
+          }[]
         >(
           `SELECT
              COALESCE(SUM(amount) FILTER (WHERE type='CREDIT'), 0)::text AS credits,
              COALESCE(SUM(amount) FILTER (WHERE type='DEBIT'),  0)::text AS debits,
              COALESCE(SUM(fee), 0)::text AS fees,
+             COALESCE(SUM(fee_vat), 0)::text AS vat,
+             COALESCE(SUM(stamp_duty), 0)::text AS "stampDuty",
              count(*)::int AS count
            FROM transactions
           WHERE status = 'SUCCESSFUL' AND currency = $1
@@ -119,7 +128,16 @@ export class ReconciliationService {
         transactions: activityRows[0]?.count ?? 0,
         credits: new Decimal(activityRows[0]?.credits ?? 0).toFixed(2),
         debits: new Decimal(activityRows[0]?.debits ?? 0).toFixed(2),
+        // `fees` is everything charged on top of payouts and bills; the
+        // other three split it. VAT and stamp duty are collected for the
+        // government, so only `transferFees` is Fiam's income.
         fees: new Decimal(activityRows[0]?.fees ?? 0).toFixed(2),
+        vat: new Decimal(activityRows[0]?.vat ?? 0).toFixed(2),
+        stampDuty: new Decimal(activityRows[0]?.stampDuty ?? 0).toFixed(2),
+        transferFees: new Decimal(activityRows[0]?.fees ?? 0)
+          .minus(activityRows[0]?.vat ?? 0)
+          .minus(activityRows[0]?.stampDuty ?? 0)
+          .toFixed(2),
       },
       unmatched: {
         count: unmatchedRows.length,
