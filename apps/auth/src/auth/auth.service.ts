@@ -413,11 +413,15 @@ export class AuthService {
     );
   }
 
-  setTransferCaps(
+  // Changing a limit is PIN-gated: a stolen session must not be able to
+  // raise the cap before draining the wallet.
+  async setTransferCaps(
     userId: string,
+    pin: string,
     perTransfer: number | null,
     daily: number | null,
   ) {
+    await this.verifyTransactionPin(userId, pin);
     return this.usersService.setTransferCaps(userId, perTransfer, daily);
   }
 

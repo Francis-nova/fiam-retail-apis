@@ -131,9 +131,6 @@ export class PayoutsService {
       dto.pin,
     );
 
-    const { enforce: enforceCaps } = this.configService.get('transferCaps', {
-      infer: true,
-    });
     const provider = this.registry.getProviderForCurrency(CurrencyCode.NGN);
     const { walletName } = this.configService.get('vfd', { infer: true });
 
@@ -217,9 +214,7 @@ export class PayoutsService {
         amount,
         transferLimit,
       );
-      if (caps && enforceCaps) {
-        await this.assertWithinCaps(manager, wallet.id, amount, caps);
-      }
+      await this.checkCaps(manager, wallet.id, amount, caps);
       return manager.save(
         Transaction,
         manager.create(Transaction, {
@@ -384,6 +379,19 @@ export class PayoutsService {
     return new Date(Math.floor((Date.now() + hour) / day) * day - hour);
   }
 
+  // Shared with bill payments. Call after the wallet row is locked.
+  async checkCaps(
+    manager: EntityManager,
+    walletId: string,
+    amount: Decimal,
+    caps: TransferCaps | null,
+  ): Promise<void> {
+    const { enforce } = this.configService.get('transferCaps', { infer: true });
+    if (caps && enforce) {
+      await this.assertWithinCaps(manager, walletId, amount, caps);
+    }
+  }
+
   // The customer's own per-transfer and daily caps (default: tier ceiling).
   private async assertWithinCaps(
     manager: EntityManager,
@@ -432,7 +440,8 @@ export class PayoutsService {
           this.startOfLagosDay(),
         )
       : new Decimal(0);
-    return { ...caps, usedToday: used.toFixed(2) };
+    const { enforce } = this.configService.get('transferCaps', { infer: true });
+    return { ...caps, usedToday: used.toFixed(2), enforced: enforce };
   }
 
   // For the transfer screen: is a limit active, and how much is left of it.

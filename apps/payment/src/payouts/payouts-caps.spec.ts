@@ -57,3 +57,40 @@ describe('customer transfer caps', () => {
     jest.useRealTimers();
   });
 });
+
+describe('checkCaps (shared with bill payments)', () => {
+  const caps = {
+    perTransfer: '1000',
+    daily: null,
+    tierPerTransfer: null,
+    tierDaily: null,
+  };
+  const make = (enforce: boolean) => {
+    const service = Object.create(PayoutsService.prototype) as {
+      checkCaps: (...a: unknown[]) => Promise<void>;
+      configService: unknown;
+      outflowSince: jest.Mock;
+    };
+    service.configService = { get: () => ({ enforce }) };
+    service.outflowSince = jest.fn();
+    return service;
+  };
+
+  it('does nothing while enforcement is off', async () => {
+    await expect(
+      make(false).checkCaps({}, 'w', new Decimal('5000'), caps),
+    ).resolves.toBeUndefined();
+  });
+
+  it('does nothing when auth sent no caps', async () => {
+    await expect(
+      make(true).checkCaps({}, 'w', new Decimal('5000'), null),
+    ).resolves.toBeUndefined();
+  });
+
+  it('blocks over the cap once enforcement is on', async () => {
+    await expect(
+      make(true).checkCaps({}, 'w', new Decimal('1000.01'), caps),
+    ).rejects.toMatchObject({ status: 403 });
+  });
+});

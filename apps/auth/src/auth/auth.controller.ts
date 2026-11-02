@@ -158,6 +158,7 @@ export class AuthController {
     return this.authService.transferCaps(user.userId);
   }
 
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Put('transfer-limits')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
@@ -167,6 +168,7 @@ export class AuthController {
   ) {
     return this.authService.setTransferCaps(
       user.userId,
+      dto.pin,
       dto.perTransfer,
       dto.daily,
     );

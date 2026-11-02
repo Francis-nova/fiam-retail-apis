@@ -32,6 +32,7 @@ function setup(opts: { statusResult?: unknown; tx?: unknown }) {
     {} as never,
     {} as never,
     beneficiaries as never,
+    {} as never,
   );
   return { service, queue, notifications, transactionsRepo, provider };
 }
