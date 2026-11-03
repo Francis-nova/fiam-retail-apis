@@ -46,4 +46,6 @@ export enum PushTemplate {
   SECURITY_LOCKOUT = 'push-security-lockout',
   // Correct password entered on a device we haven't seen before.
   SECURITY_NEW_DEVICE = 'push-security-new-device',
+  // Staff broadcast from the console. data: { title, body }
+  BROADCAST = 'push-broadcast',
 }

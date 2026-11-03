@@ -15,6 +15,7 @@ interface EnvVars {
   PAYMENT_INTERNAL_URL: string;
   INTERNAL_API_KEY: string;
   RABBITMQ_URL: string;
+  REDIS_URL: string;
   ADMIN_TOTP_ENCRYPTION_KEY: string;
   ADMIN_TOTP_ISSUER: string;
   ADMIN_REQUIRE_2FA: 'true' | 'false';
@@ -38,6 +39,8 @@ export const envSchema = Joi.object<EnvVars>({
   INTERNAL_API_KEY: Joi.string().min(32).allow('').default(''),
   // Optional: where staff alerts are published (postoffice sends the email).
   RABBITMQ_URL: Joi.string().allow('').default(''),
+  // Broadcast queue (BullMQ).
+  REDIS_URL: Joi.string().default('redis://localhost:6379'),
   // Encrypts staff TOTP secrets at rest: `openssl rand -hex 32`. Losing or
   // rotating it makes every enrolled authenticator unreadable (re-enrol).
   ADMIN_TOTP_ENCRYPTION_KEY: Joi.string()
