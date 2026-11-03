@@ -33,7 +33,7 @@ services:
         - traefik.http.routers.console.rule=Host(`console.staging.usefiam.com`)
         - traefik.http.routers.console.entrypoints=websecure
         - traefik.http.routers.console.tls.certresolver=le
-        - traefik.http.services.console.loadbalancer.server.port=80
+        - traefik.http.services.console.loadbalancer.server.port=8080
 
 networks:
   edge:
