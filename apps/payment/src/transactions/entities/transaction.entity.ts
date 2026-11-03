@@ -167,6 +167,26 @@ export class Transaction {
   })
   fee: string | null;
 
+  // Breakdown of `fee` (which is the total of every charge): the VAT on our
+  // transfer fee and the government stamp duty. Null on rows predating them.
+  @Column({
+    name: 'fee_vat',
+    type: 'numeric',
+    precision: 15,
+    scale: 4,
+    nullable: true,
+  })
+  feeVat: string | null;
+
+  @Column({
+    name: 'stamp_duty',
+    type: 'numeric',
+    precision: 15,
+    scale: 4,
+    nullable: true,
+  })
+  stampDuty: string | null;
+
   // Set for DEBIT (payout) transactions — links to the saved recipient this
   // payout went to. Null for CREDIT (payin) transactions, which have no
   // beneficiary concept. See beneficiaries/entities/beneficiary.entity.ts.

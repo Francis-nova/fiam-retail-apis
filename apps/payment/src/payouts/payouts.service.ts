@@ -46,7 +46,12 @@ import {
 } from './payout-status-query.queue';
 import { ResolveRecipientDto } from './dto/resolve-recipient.dto';
 import { InitiatePayoutDto } from './dto/initiate-payout.dto';
-import { calculateTransferFee } from './fee.util';
+import {
+  FREE_PAYOUTS_PER_DAY,
+  calculateTransferFee,
+  stampDuty,
+  withVat,
+} from './fee.util';
 import { PinVerifierService } from './pin-verifier.service';
 import type { TransferCaps, TransferLimit } from './pin-verifier.service';
 
@@ -99,11 +104,18 @@ export class PayoutsService {
     };
   }
 
-  calculateFee(amountRaw: string): {
+  async calculateFee(
+    userId: string,
+    amountRaw: string,
+  ): Promise<{
     amount: string;
+    // Total of every charge (fee + VAT + stamp duty), so older app versions
+    // that only read `fee` still show the right total.
     fee: string;
+    vat: string;
+    stampDuty: string;
     total: string;
-  } {
+  }> {
     let amount: Decimal;
     try {
       amount = new Decimal(amountRaw);
@@ -113,11 +125,21 @@ export class PayoutsService {
     if (amount.lessThanOrEqualTo(0)) {
       throw new BadRequestException('amount must be greater than zero');
     }
-    const fee = calculateTransferFee(amount);
+    const wallet = await this.walletsService.findByUserAndCurrency(
+      userId,
+      CurrencyCode.NGN,
+    );
+    const c = await this.payoutCharges(
+      this.dataSource.manager,
+      wallet?.id ?? null,
+      amount,
+    );
     return {
       amount: amount.toFixed(4),
-      fee: fee.toFixed(4),
-      total: amount.plus(fee).toFixed(4),
+      fee: c.total.toFixed(4),
+      vat: c.vat.toFixed(4),
+      stampDuty: c.stampDuty.toFixed(4),
+      total: amount.plus(c.total).toFixed(4),
     };
   }
 
@@ -154,8 +176,6 @@ export class PayoutsService {
     if (amount.lessThanOrEqualTo(0)) {
       throw new BadRequestException('amount must be greater than zero');
     }
-    const fee = calculateTransferFee(amount);
-    const debit = amount.plus(fee);
 
     const wallet = await this.walletsService.findByUserAndCurrency(
       userId,
@@ -197,17 +217,25 @@ export class PayoutsService {
 
     const reference = await this.generateReference(walletName, provider.key);
 
+    let charges!: Awaited<ReturnType<PayoutsService['payoutCharges']>>;
     const transaction = await this.dataSource.transaction(async (manager) => {
-      // Debits amount + fee together — the fee is a platform charge on top
-      // of what actually reaches the recipient (see initiateTransfer below,
-      // which only ever sends `amount` to VFD).
-      const debited = await this.walletsService.debitForUpdate(
+      // Debits amount + fee — the fee is a platform charge on top of what
+      // actually reaches the recipient (see initiateTransfer below, which only
+      // ever sends `amount` to VFD). The amount goes first because that call
+      // locks the wallet row, and the fee depends on today's count under it.
+      let debited = await this.walletsService.debitForUpdate(
         manager,
         wallet.id,
-        debit,
+        amount,
       );
       // After the wallet row is locked, so two concurrent payouts can't both
-      // squeeze under the cap.
+      // squeeze under the cap or both take the last free slot.
+      charges = await this.payoutCharges(manager, wallet.id, amount);
+      debited = await this.walletsService.debitForUpdate(
+        manager,
+        wallet.id,
+        charges.total,
+      );
       await this.assertWithinTransferLimit(
         manager,
         wallet.id,
@@ -226,7 +254,9 @@ export class PayoutsService {
           provider: provider.key,
           accountNumber: address.providerAccountNumber,
           amount: amount.toFixed(4),
-          fee: fee.toFixed(4),
+          fee: charges.total.toFixed(4),
+          feeVat: charges.vat.toFixed(4),
+          stampDuty: charges.stampDuty.toFixed(4),
           balanceAfter: debited.balance,
           reference,
           beneficiaryId: beneficiary.id,
@@ -309,6 +339,56 @@ export class PayoutsService {
       return 'HOLD';
     }
     return 'UNRESOLVED';
+  }
+
+  // What this payout costs on top of `amount`: the tiered fee (nothing for
+  // the first FREE_PAYOUTS_PER_DAY payouts while staff leave that rule on),
+  // 7.5% VAT on that fee, and stamp duty. `total` is what gets debited and
+  // stored as Transaction.fee.
+  async payoutCharges(
+    manager: EntityManager,
+    walletId: string | null,
+    amount: Decimal,
+  ): Promise<{
+    fee: Decimal;
+    vat: Decimal;
+    stampDuty: Decimal;
+    total: Decimal;
+  }> {
+    const duty = stampDuty(amount);
+    const done = (fee: Decimal) => {
+      const vat = withVat(fee).minus(fee);
+      return { fee, vat, stampDuty: duty, total: fee.plus(vat).plus(duty) };
+    };
+    if (walletId && (await this.freePayoutsEnabled(manager))) {
+      const used = await manager
+        .createQueryBuilder(Transaction, 't')
+        .where('t.walletId = :walletId', { walletId })
+        .andWhere('t.kind = :kind', { kind: TransactionKind.PAYOUT })
+        .andWhere('t.status <> :failed', { failed: TransactionStatus.FAILED })
+        .andWhere('t.createdAt >= :since', { since: this.startOfLagosDay() })
+        .getCount();
+      if (used < FREE_PAYOUTS_PER_DAY) return done(new Decimal(0));
+    }
+    return done(calculateTransferFee(amount));
+  }
+
+  async freePayoutsEnabled(
+    manager: EntityManager = this.dataSource.manager,
+  ): Promise<boolean> {
+    const rows: { value: boolean }[] = await manager.query(
+      `SELECT "value" FROM "app_settings" WHERE "key" = 'free_payouts_enabled'`,
+    );
+    return rows[0]?.value !== false;
+  }
+
+  async setFreePayoutsEnabled(enabled: boolean): Promise<{ enabled: boolean }> {
+    await this.dataSource.query(
+      `INSERT INTO "app_settings" ("key","value") VALUES ('free_payouts_enabled',$1::jsonb)
+       ON CONFLICT ("key") DO UPDATE SET "value" = EXCLUDED."value", "updated_at" = now()`,
+      [JSON.stringify(enabled)],
+    );
+    return { enabled };
   }
 
   // Payout amount already sent (or in flight) inside the limit window. Failed

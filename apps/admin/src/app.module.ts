@@ -13,6 +13,7 @@ import { CustomersModule } from './customers/customers.module';
 import { TransactionsModule } from './transactions/transactions.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { StaffModule } from './staff/staff.module';
+import { SettingsModule } from './settings/settings.module';
 import { ReconciliationModule } from './reconciliation/reconciliation.module';
 import { HealthController } from './health/health.controller';
 
@@ -37,6 +38,7 @@ import { HealthController } from './health/health.controller';
     PostingsModule,
     DeletionRequestsModule,
     ReconciliationModule,
+    SettingsModule,
   ],
   controllers: [HealthController],
 })

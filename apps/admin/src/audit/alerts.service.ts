@@ -31,6 +31,7 @@ export const ALERT_ACTIONS: Record<string, string> = {
   'customer.closed': 'Customer account closed',
   'posting.approved': 'Manual posting approved',
   'posting.failed': 'Manual posting failed',
+  'settings.free_payouts_toggled': 'Free-payouts rule switched on or off',
 };
 
 const lagos = () =>

@@ -7,7 +7,7 @@ export class AuthClient {
   constructor(private readonly http: InternalHttp) {}
 
   call<T>(
-    method: 'POST' | 'PATCH' | 'DELETE',
+    method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
     path: string,
     body?: unknown,
   ): Promise<T> {

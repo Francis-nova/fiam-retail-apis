@@ -54,6 +54,9 @@ export interface TransactionResponse {
   currency: string;
   amount: string;
   fee: string | null;
+  // Parts of `fee` (null on older rows): VAT on the transfer fee, and stamp duty.
+  feeVat: string | null;
+  stampDuty: string | null;
   balanceAfter: string | null;
   reference: string;
   // Provider's session id (NIBSS session for VFD) — null when none was issued.
@@ -109,6 +112,8 @@ function toResponse(transaction: Transaction): TransactionResponse {
     currency: transaction.currency,
     amount: transaction.amount,
     fee: transaction.fee,
+    feeVat: transaction.feeVat,
+    stampDuty: transaction.stampDuty,
     balanceAfter: transaction.balanceAfter,
     reference: transaction.reference,
     sessionId: transaction.externalId,

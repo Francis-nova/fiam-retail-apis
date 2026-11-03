@@ -29,6 +29,7 @@ import { AuditService } from '../audit/audit.service';
 import { TransactionsService } from '../transactions/transactions.service';
 import { ListTransactionsQueryDto } from '../transactions/dto/list-transactions-query.dto';
 import { CustomersService } from './customers.service';
+import { AuthClient } from './auth-client.service';
 import { CustomerActionsService } from './customer-actions.service';
 import { ListCustomersQueryDto } from './dto/list-customers-query.dto';
 import {
@@ -54,6 +55,7 @@ export class CustomersController {
     private readonly actions: CustomerActionsService,
     private readonly transactions: TransactionsService,
     private readonly audit: AuditService,
+    private readonly authClient: AuthClient,
   ) {}
 
   // Filtering by tier-upgrade status is the KYC review queue.
@@ -66,6 +68,24 @@ export class CustomersController {
       throw new ForbiddenException('Insufficient role for the review queue');
     }
     return this.customers.list(q);
+  }
+
+  // The customer's payout caps (their own, else the tier ceilings) and any
+  // new-device restriction. Read from auth, which owns them.
+  @Get(':id/limits')
+  async limits(@Param('id', new ParseUUIDPipe()) id: string) {
+    const [caps, device] = await Promise.all([
+      this.authClient.call<{
+        perTransfer: string | null;
+        daily: string | null;
+        tierPerTransfer: string | null;
+        tierDaily: string | null;
+      }>('GET', `/users/${id}/transfer-caps`),
+      this.authClient.call<{
+        transferLimit: { amount: string; since: string; until: string } | null;
+      }>('GET', `/users/${id}/transfer-limit`),
+    ]);
+    return { ...caps, deviceRestriction: device.transferLimit };
   }
 
   @Get(':id')
