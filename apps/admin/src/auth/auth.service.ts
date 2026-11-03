@@ -17,14 +17,20 @@ import { sha256 } from '@app/common';
 import { AdminConfig } from '../config/configuration';
 import { AuditService } from '../audit/audit.service';
 import { StaffStatus, StaffUser } from '../staff/entities/staff-user.entity';
+import type {
+  AuthenticationResponseJSON,
+  RegistrationResponseJSON,
+} from '@simplewebauthn/server';
+import { DeviceStatus } from './entities/staff-device.entity';
 import { StaffRefreshToken } from './entities/staff-refresh-token.entity';
 import { TotpService } from './totp.service';
+import { DevicesService } from './devices.service';
 
 const MAX_FAILED_ATTEMPTS = 5;
 const LOCK_MINUTES = 15;
 const MFA_TOKEN_TTL = '5m';
 
-type MfaStep = 'verify' | 'enroll';
+type MfaStep = 'verify' | 'enroll' | 'device';
 
 @Injectable()
 export class AuthService {
@@ -37,6 +43,7 @@ export class AuthService {
     private readonly config: ConfigService<AdminConfig, true>,
     private readonly audit: AuditService,
     private readonly totp: TotpService,
+    private readonly devices: DevicesService,
   ) {}
 
   // --- Attempt limiting -----------------------------------------------------
@@ -149,6 +156,23 @@ export class AuthService {
     ip: string | null,
     method: 'password' | 'totp' | 'recovery' | 'enrolment',
   ) {
+    // Device lock: password/2FA alone no longer opens a session.
+    if (this.config.get('device', { infer: true }).required) {
+      return {
+        mfa: 'device' as const,
+        mfaToken: await this.signMfaToken(staff.id, 'device'),
+        device: await this.devices.state(staff.id),
+      };
+    }
+    return this.finishLogin(staff, ip, method, null);
+  }
+
+  private async finishLogin(
+    staff: StaffUser,
+    ip: string | null,
+    method: string,
+    deviceId: string | null,
+  ) {
     await this.staffRepo.update(staff.id, {
       failedLoginAttempts: 0,
       lockedUntil: null,
@@ -159,9 +183,77 @@ export class AuthService {
       staffEmail: staff.email,
       action: 'auth.login',
       ip,
-      metadata: { method },
+      metadata: { method, deviceId },
     });
-    return this.issueTokens(staff, randomUUID());
+    return this.issueTokens(staff, randomUUID(), deviceId);
+  }
+
+  // --- Devices: managing your own once signed in ---------------------------
+
+  async addDeviceOptions(staffId: string) {
+    return this.devices.registrationOptions(
+      await this.staffRepo.findOneByOrFail({ id: staffId }),
+    );
+  }
+
+  async addDevice(
+    staffId: string,
+    challengeToken: string,
+    response: RegistrationResponseJSON,
+    label: string,
+    ip: string | null,
+  ) {
+    return this.devices.register(
+      await this.staffRepo.findOneByOrFail({ id: staffId }),
+      challengeToken,
+      response,
+      label,
+      DeviceStatus.ACTIVE,
+      ip,
+    );
+  }
+
+  // --- Device lock: final sign-in step ---------------------------------------
+
+  async deviceOptions(mfaToken: string, mode: 'assert' | 'register') {
+    const staff = await this.readMfaToken(mfaToken, 'device');
+    return mode === 'assert'
+      ? this.devices.authenticationOptions(staff.id)
+      : this.devices.registrationOptions(staff);
+  }
+
+  async deviceAssert(
+    mfaToken: string,
+    challengeToken: string,
+    response: AuthenticationResponseJSON,
+    ip: string | null,
+  ) {
+    const staff = await this.readMfaToken(mfaToken, 'device');
+    const device = await this.devices.authenticate(
+      staff.id,
+      challengeToken,
+      response,
+    );
+    return this.finishLogin(staff, ip, 'device', device.id);
+  }
+
+  /** A new device asks for access; it can't sign in until a super admin approves. */
+  async deviceRegister(
+    mfaToken: string,
+    challengeToken: string,
+    response: RegistrationResponseJSON,
+    label: string,
+    ip: string | null,
+  ) {
+    const staff = await this.readMfaToken(mfaToken, 'device');
+    return this.devices.register(
+      staff,
+      challengeToken,
+      response,
+      label,
+      DeviceStatus.PENDING,
+      ip,
+    );
   }
 
   // Signed with a secret derived from (but different to) the access secret, so
@@ -414,7 +506,16 @@ export class AuthService {
       throw new UnauthorizedException();
     }
     await this.refreshRepo.update(existing.id, { revokedAt: new Date() });
-    return this.issueTokens(staff, existing.familyId);
+    if (
+      this.config.get('device', { infer: true }).required &&
+      !(
+        existing.deviceId &&
+        (await this.devices.isActive(existing.deviceId, staff.id))
+      )
+    ) {
+      throw new UnauthorizedException();
+    }
+    return this.issueTokens(staff, existing.familyId, existing.deviceId);
   }
 
   async logout(rawToken: string) {
@@ -429,6 +530,7 @@ export class AuthService {
     currentPassword: string,
     newPassword: string,
     ip: string | null,
+    deviceId: string | null = null,
   ) {
     const staff = await this.staffRepo.findOneByOrFail({ id: staffId });
     if (!(await argon2.verify(staff.passwordHash, currentPassword))) {
@@ -457,6 +559,7 @@ export class AuthService {
     return this.issueTokens(
       { ...staff, mustChangePassword: false },
       randomUUID(),
+      deviceId,
     );
   }
 
@@ -467,14 +570,22 @@ export class AuthService {
     );
   }
 
-  private async issueTokens(staff: StaffUser, familyId: string) {
-    const accessToken = await this.jwt.signAsync({ sub: staff.id });
+  private async issueTokens(
+    staff: StaffUser,
+    familyId: string,
+    deviceId: string | null = null,
+  ) {
+    const accessToken = await this.jwt.signAsync({
+      sub: staff.id,
+      ...(deviceId && { did: deviceId }),
+    });
     const refreshToken = randomBytes(48).toString('base64url');
     const { refreshTtlDays } = this.config.get('jwt', { infer: true });
     await this.refreshRepo.insert({
       staffId: staff.id,
       tokenHash: sha256(refreshToken),
       familyId,
+      deviceId,
       expiresAt: new Date(Date.now() + refreshTtlDays * 86_400_000),
     });
     return {

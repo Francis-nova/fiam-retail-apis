@@ -231,6 +231,19 @@ enrolled authenticator becomes unreadable and each staff member must be reset
    person's page. Lost the *only* super admin's device: run the seed script
    for a new super admin (see "Migrate and seed" above) and reset the old one.
 
+**Device lock (passkeys).** With `ADMIN_REQUIRE_DEVICE=true`, sign-in also needs
+a passkey from an approved device, so home IPs don't matter. Each person can
+hold **3 devices** at most (pending + active); revoke one to free a slot.
+Rollout: (1) set `ADMIN_WEBAUTHN_RP_ID`/`ADMIN_WEBAUTHN_ORIGIN` to the console
+domain and run the migration; (2) with the flag still off, each person adds a
+device under Security → Devices (active immediately); (3) flip the flag
+(`docker service update --env-add ADMIN_REQUIRE_DEVICE=true fiam_admin`).
+A new device signs in with "Register this device" and waits as *pending* until a
+super admin approves it on the staff page. Lost every device? Run on the server
+`npm run device:admin -- reset <email>` (compiled copy under `dist/`), then
+register a new one and `npm run device:admin -- approve <email>`. Existing
+sessions are signed out when the flag turns on.
+
 **IP allowlist.** `ADMIN_ALLOWED_IPS` is a comma-separated list of IPs/CIDRs
 (`203.0.113.7, 198.51.100.0/24`). Blank/unset = **not enforced**. When set,
 every request from elsewhere gets `403` (except `/health`). It reads the

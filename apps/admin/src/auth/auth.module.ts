@@ -6,6 +6,8 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AdminConfig } from '../config/configuration';
 import { StaffUser } from '../staff/entities/staff-user.entity';
 import { StaffRefreshToken } from './entities/staff-refresh-token.entity';
+import { StaffDevice } from './entities/staff-device.entity';
+import { DevicesService } from './devices.service';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { TotpService } from './totp.service';
@@ -17,7 +19,7 @@ import { RolesGuard } from './roles.guard';
 @Module({
   imports: [
     PassportModule,
-    TypeOrmModule.forFeature([StaffUser, StaffRefreshToken]),
+    TypeOrmModule.forFeature([StaffUser, StaffRefreshToken, StaffDevice]),
     JwtModule.registerAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService<AdminConfig, true>) => ({
@@ -29,7 +31,14 @@ import { RolesGuard } from './roles.guard';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, TotpService, JwtStrategy, JwtAuthGuard, RolesGuard],
-  exports: [JwtAuthGuard, RolesGuard],
+  providers: [
+    AuthService,
+    DevicesService,
+    TotpService,
+    JwtStrategy,
+    JwtAuthGuard,
+    RolesGuard,
+  ],
+  exports: [JwtAuthGuard, RolesGuard, DevicesService],
 })
 export class AdminAuthModule {}

@@ -269,6 +269,9 @@ services:
       ADMIN_TOTP_ENCRYPTION_KEY: ${ADMIN_TOTP_ENCRYPTION_KEY:?set ADMIN_TOTP_ENCRYPTION_KEY in docker/.env}
       # true = every staff member must enrol in 2FA before they can sign in.
       ADMIN_REQUIRE_2FA: ${ADMIN_REQUIRE_2FA:-false}
+      ADMIN_REQUIRE_DEVICE: ${ADMIN_REQUIRE_DEVICE:-false}
+      ADMIN_WEBAUTHN_RP_ID: ${ADMIN_WEBAUTHN_RP_ID:-localhost}
+      ADMIN_WEBAUTHN_ORIGIN: ${ADMIN_WEBAUTHN_ORIGIN:-http://localhost:5173}
       ADMIN_TOTP_ISSUER: ${ADMIN_TOTP_ISSUER:-Fiam Console}
       # Staff alerts: emails super admins on sensitive actions via postoffice.
       RABBITMQ_URL: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASSWORD}@rabbitmq:5672

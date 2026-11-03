@@ -38,6 +38,7 @@ d('staff sign-in with 2FA (Postgres)', () => {
         .reduce<unknown>((o, k) => (o as Record<string, unknown>)?.[k], {
           jwt: { accessSecret: SECRET, accessTtl: '15m', refreshTtlDays: 7 },
           totp: totpCfg,
+          device: { required: false },
         }),
   };
   let svc: AuthService;
@@ -93,6 +94,7 @@ d('staff sign-in with 2FA (Postgres)', () => {
       config as never,
       audit as never,
       totp,
+      {} as never,
     );
   });
   afterAll(() => ds.destroy());
@@ -229,7 +231,7 @@ d('staff sign-in with 2FA (Postgres)', () => {
     );
     expect(done).toHaveProperty('accessToken');
     expect(done.recoveryCodes).toHaveLength(10);
-    expect(done.staff.twoFactorEnabled).toBe(true);
+    expect('staff' in done && done.staff.twoFactorEnabled).toBe(true);
   });
 
   it('refuses to disable 2FA when required, and needs password + code otherwise', async () => {

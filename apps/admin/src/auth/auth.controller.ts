@@ -3,8 +3,11 @@ import { Throttle } from '@nestjs/throttler';
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
+  Param,
+  ParseUUIDPipe,
   Post,
   Req,
   Res,
@@ -13,9 +16,18 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { ApiBearerAuth } from '@nestjs/swagger';
+import type {
+  AuthenticationResponseJSON,
+  RegistrationResponseJSON,
+} from '@simplewebauthn/server';
 import { AuthService } from './auth.service';
+import { DevicesService } from './devices.service';
 import {
+  AddDeviceDto,
   ChangePasswordDto,
+  DeviceAssertDto,
+  DeviceOptionsDto,
+  DeviceRegisterDto,
   DisableTwoFactorDto,
   LoginDto,
   MfaEnrollConfirmDto,
@@ -40,7 +52,10 @@ import {
 @UseInterceptors(RefreshCookieInterceptor)
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly auth: AuthService) {}
+  constructor(
+    private readonly auth: AuthService,
+    private readonly devices: DevicesService,
+  ) {}
 
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post('login')
@@ -73,6 +88,92 @@ export class AuthController {
     @ClientIp() ip: string | null,
   ) {
     return this.auth.confirmEnrollmentWithToken(dto.mfaToken, dto.code, ip);
+  }
+
+  // --- Device lock: last sign-in step (authorised by the mfaToken) ---
+
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Post('device/options')
+  @HttpCode(200)
+  deviceOptions(@Body() dto: DeviceOptionsDto) {
+    return this.auth.deviceOptions(dto.mfaToken, dto.mode);
+  }
+
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Post('device/assert')
+  @HttpCode(200)
+  deviceAssert(@Body() dto: DeviceAssertDto, @ClientIp() ip: string | null) {
+    return this.auth.deviceAssert(
+      dto.mfaToken,
+      dto.challengeToken,
+      dto.response as unknown as AuthenticationResponseJSON,
+      ip,
+    );
+  }
+
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Post('device/register')
+  @HttpCode(200)
+  deviceRegister(
+    @Body() dto: DeviceRegisterDto,
+    @ClientIp() ip: string | null,
+  ) {
+    return this.auth.deviceRegister(
+      dto.mfaToken,
+      dto.challengeToken,
+      dto.response as unknown as RegistrationResponseJSON,
+      dto.label,
+      ip,
+    );
+  }
+
+  // --- Devices: managing your own, once signed in ---
+
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @Get('devices')
+  listDevices(@CurrentStaff() staff: AuthenticatedStaff) {
+    return this.devices.list(staff.staffId);
+  }
+
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Post('devices/options')
+  @HttpCode(200)
+  addDeviceOptions(@CurrentStaff() staff: AuthenticatedStaff) {
+    return this.auth.addDeviceOptions(staff.staffId);
+  }
+
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Post('devices')
+  @HttpCode(200)
+  addDevice(
+    @CurrentStaff() staff: AuthenticatedStaff,
+    @Body() dto: AddDeviceDto,
+    @ClientIp() ip: string | null,
+  ) {
+    return this.auth.addDevice(
+      staff.staffId,
+      dto.challengeToken,
+      dto.response as unknown as RegistrationResponseJSON,
+      dto.label,
+      ip,
+    );
+  }
+
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @Delete('devices/:id')
+  @HttpCode(204)
+  async removeDevice(
+    @CurrentStaff() staff: AuthenticatedStaff,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @ClientIp() ip: string | null,
+  ) {
+    await this.devices.revoke(staff.staffId, id, staff, ip);
   }
 
   // --- Two-factor: managing your own, once signed in ---
@@ -168,6 +269,7 @@ export class AuthController {
       dto.currentPassword,
       dto.newPassword,
       ip,
+      staff.deviceId,
     );
   }
 }
