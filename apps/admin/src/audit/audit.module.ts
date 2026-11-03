@@ -40,6 +40,7 @@ import { AuditController } from './audit.controller';
   ],
   controllers: [AuditController],
   providers: [AuditService, AlertsService],
-  exports: [AuditService],
+  // ClientsModule: the comms worker reuses the postoffice client.
+  exports: [AuditService, ClientsModule],
 })
 export class AuditModule {}

@@ -1,7 +1,9 @@
 import { Module } from '@nestjs/common';
 import { RateLimitModule, AppLoggerModule } from '@app/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { BullModule } from '@nestjs/bullmq';
 import configuration from './config/configuration';
+import { AdminConfig } from './config/configuration';
 import { validate } from './config/env.validation';
 import { DatabaseModule } from './database/database.module';
 import { AuditModule } from './audit/audit.module';
@@ -15,6 +17,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
 import { StaffModule } from './staff/staff.module';
 import { SettingsModule } from './settings/settings.module';
 import { ReconciliationModule } from './reconciliation/reconciliation.module';
+import { CommsModule } from './comms/comms.module';
 import { HealthController } from './health/health.controller';
 
 @Module({
@@ -26,6 +29,12 @@ import { HealthController } from './health/health.controller';
       envFilePath: 'apps/admin/.env',
       load: [configuration],
       validate,
+    }),
+    BullModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService<AdminConfig, true>) => ({
+        connection: { url: config.get('redis', { infer: true }).url },
+      }),
     }),
     DatabaseModule,
     ReadonlyDatabaseModule,
@@ -39,6 +48,7 @@ import { HealthController } from './health/health.controller';
     DeletionRequestsModule,
     ReconciliationModule,
     SettingsModule,
+    CommsModule,
   ],
   controllers: [HealthController],
 })

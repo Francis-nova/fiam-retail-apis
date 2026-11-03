@@ -1,0 +1,7 @@
+extends layout
+include mixins
+
+block content
+  +heading(title)
+  +greeting(firstName)
+  p(style="margin:0; font-size:15px; line-height:1.6; color:#000909; white-space:pre-line;")= body

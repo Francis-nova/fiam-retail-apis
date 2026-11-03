@@ -80,6 +80,12 @@ export function renderPush(
         body: "Someone signed in to your Fiam account from a new device. If this wasn't you, change your password right away.",
         data: { type: 'security' },
       };
+    case PushTemplate.BROADCAST:
+      return {
+        title: data.title,
+        body: data.body,
+        data: { type: 'broadcast' },
+      };
     case PushTemplate.KYC_REJECTED:
       return {
         title: 'Update needed on your verification',
