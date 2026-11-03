@@ -21,6 +21,7 @@ import {
 } from '../auth/current-staff.decorator';
 import { StaffRole } from './entities/staff-user.entity';
 import { StaffService } from './staff.service';
+import { DevicesService } from '../auth/devices.service';
 import { CreateStaffDto, UpdateStaffDto } from './dto/staff.dto';
 
 @ApiBearerAuth()
@@ -28,11 +29,41 @@ import { CreateStaffDto, UpdateStaffDto } from './dto/staff.dto';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(StaffRole.SUPER_ADMIN)
 export class StaffController {
-  constructor(private readonly staff: StaffService) {}
+  constructor(
+    private readonly staff: StaffService,
+    private readonly devices: DevicesService,
+  ) {}
 
   @Get()
   list() {
     return this.staff.list();
+  }
+
+  @Get(':id/devices')
+  listDevices(@Param('id', new ParseUUIDPipe()) id: string) {
+    return this.devices.list(id);
+  }
+
+  @Post(':id/devices/:deviceId/approve')
+  @HttpCode(204)
+  async approveDevice(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Param('deviceId', new ParseUUIDPipe()) deviceId: string,
+    @CurrentStaff() actor: AuthenticatedStaff,
+    @ClientIp() ip: string | null,
+  ) {
+    await this.devices.approve(id, deviceId, actor, ip);
+  }
+
+  @Delete(':id/devices/:deviceId')
+  @HttpCode(204)
+  async revokeDevice(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Param('deviceId', new ParseUUIDPipe()) deviceId: string,
+    @CurrentStaff() actor: AuthenticatedStaff,
+    @ClientIp() ip: string | null,
+  ) {
+    await this.devices.revoke(id, deviceId, actor, ip);
   }
 
   @Get(':id')

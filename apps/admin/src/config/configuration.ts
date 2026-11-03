@@ -27,6 +27,12 @@ export interface AdminConfig {
     // When true every staff member must enrol in 2FA before they can sign in.
     required: boolean;
   };
+  device: {
+    // When true, sign-in also needs a passkey from an approved device.
+    required: boolean;
+    rpId: string;
+    origins: string[];
+  };
   services: {
     authUrl: string;
     paymentUrl: string;
@@ -54,6 +60,13 @@ export default (): AdminConfig => ({
     encryptionKey: process.env.ADMIN_TOTP_ENCRYPTION_KEY as string,
     issuer: process.env.ADMIN_TOTP_ISSUER ?? 'Fiam Console',
     required: process.env.ADMIN_REQUIRE_2FA === 'true',
+  },
+  device: {
+    required: process.env.ADMIN_REQUIRE_DEVICE === 'true',
+    rpId: process.env.ADMIN_WEBAUTHN_RP_ID ?? 'localhost',
+    origins: (process.env.ADMIN_WEBAUTHN_ORIGIN ?? 'http://localhost:5173')
+      .split(',')
+      .map((o) => o.trim()),
   },
   services: {
     authUrl: process.env.AUTH_INTERNAL_URL ?? 'http://localhost:7001',
