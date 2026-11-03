@@ -24,6 +24,11 @@ export class StaffRefreshToken {
   @Column({ name: 'family_id', type: 'uuid' })
   familyId: string;
 
+  // The approved device this session was signed in from (null until the device
+  // lock is switched on).
+  @Column({ name: 'device_id', type: 'uuid', nullable: true })
+  deviceId: string | null;
+
   @Column({ name: 'expires_at', type: 'timestamptz' })
   expiresAt: Date;
 

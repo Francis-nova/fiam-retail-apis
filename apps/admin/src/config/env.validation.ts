@@ -19,6 +19,9 @@ interface EnvVars {
   ADMIN_TOTP_ENCRYPTION_KEY: string;
   ADMIN_TOTP_ISSUER: string;
   ADMIN_REQUIRE_2FA: 'true' | 'false';
+  ADMIN_REQUIRE_DEVICE: 'true' | 'false';
+  ADMIN_WEBAUTHN_RP_ID: string;
+  ADMIN_WEBAUTHN_ORIGIN: string;
 }
 
 export const envSchema = Joi.object<EnvVars>({
@@ -48,6 +51,12 @@ export const envSchema = Joi.object<EnvVars>({
     .required(),
   ADMIN_TOTP_ISSUER: Joi.string().default('Fiam Console'),
   ADMIN_REQUIRE_2FA: Joi.string().valid('true', 'false').default('false'),
+  // Device lock: sign-in also needs a passkey from an approved device.
+  // RP_ID is the console's domain (e.g. console.fiam.ng); ORIGIN is its full
+  // origin(s), comma-separated (e.g. https://console.fiam.ng).
+  ADMIN_REQUIRE_DEVICE: Joi.string().valid('true', 'false').default('false'),
+  ADMIN_WEBAUTHN_RP_ID: Joi.string().default('localhost'),
+  ADMIN_WEBAUTHN_ORIGIN: Joi.string().default('http://localhost:5173'),
 });
 
 export function validate(config: Record<string, unknown>) {

@@ -1,5 +1,7 @@
 import {
   IsEmail,
+  IsIn,
+  IsObject,
   IsString,
   Matches,
   MaxLength,
@@ -63,4 +65,43 @@ export class DisableTwoFactorDto extends TotpCodeDto {
   @IsString()
   @MaxLength(200)
   password: string;
+}
+
+// Final sign-in step when the device lock is on.
+export class DeviceOptionsDto {
+  @IsString()
+  mfaToken: string;
+
+  @IsIn(['assert', 'register'])
+  mode: 'assert' | 'register';
+}
+
+export class DeviceAssertDto {
+  @IsString()
+  mfaToken: string;
+
+  @IsString()
+  challengeToken: string;
+
+  @IsObject()
+  response: Record<string, unknown>;
+}
+
+export class DeviceRegisterDto extends DeviceAssertDto {
+  @IsString()
+  @MaxLength(60)
+  label: string;
+}
+
+// Signed in already: add another device (active straight away).
+export class AddDeviceDto {
+  @IsString()
+  challengeToken: string;
+
+  @IsObject()
+  response: Record<string, unknown>;
+
+  @IsString()
+  @MaxLength(60)
+  label: string;
 }

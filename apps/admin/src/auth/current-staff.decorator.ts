@@ -6,6 +6,7 @@ import { StaffRole } from '../staff/entities/staff-user.entity';
 // decorated controller signatures.
 export class AuthenticatedStaff {
   staffId: string;
+  deviceId: string | null;
   email: string;
   role: StaffRole;
   mustChangePassword: boolean;
