@@ -434,7 +434,7 @@ export class VfdPaymentProvider implements PaymentProvider, BillsProvider {
     return {
       outcome: resolveVfdOutcome(classification),
       providerReference: body?.data?.reference ?? input.reference,
-      externalId: body?.data?.sessionId ?? body?.data?.txnId ?? null,
+      externalId: body?.data?.sessionId ?? null,
       providerStatusCode: body?.status ?? null,
       rawPayload: (body as Record<string, unknown> | null) ?? null,
     };
@@ -487,7 +487,7 @@ export class VfdPaymentProvider implements PaymentProvider, BillsProvider {
     return {
       outcome: resolveVfdOutcome(classification),
       providerReference: reference,
-      externalId: body?.data?.sessionId ?? body?.data?.TxnId ?? null,
+      externalId: body?.data?.sessionId ?? null,
       providerStatusCode: code,
       rawPayload: (body as Record<string, unknown> | null) ?? null,
     };

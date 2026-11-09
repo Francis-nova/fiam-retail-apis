@@ -116,7 +116,11 @@ function toResponse(transaction: Transaction): TransactionResponse {
     stampDuty: transaction.stampDuty,
     balanceAfter: transaction.balanceAfter,
     reference: transaction.reference,
-    sessionId: transaction.externalId,
+    // Older payouts stored VFD's txnId (= our reference) here, not a real session ID.
+    sessionId:
+      transaction.externalId === transaction.reference
+        ? null
+        : transaction.externalId,
     provider: transaction.provider,
     narration: transaction.narration,
     counterpartyName,
