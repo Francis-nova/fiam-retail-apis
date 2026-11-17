@@ -186,7 +186,7 @@ services:
       REDIS_URL: redis://redis:6379
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
       PAYMENT_PROVIDER_NGN: vfd
-      VFD_AUTH_BASE_URL: ${VFD_AUTH_BASE_URL:-https://api-devapps.vfdbank.systems/vfd-tech/baas-portal/v1.1/baasauth}
+      VFD_AUTH_BASE_URL: ${VFD_AUTH_BASE_URL:-https://api-devapps.vfdbank.systems/vtech-wallet/api/v2/wallet2}
       VFD_WALLET_BASE_URL: ${VFD_WALLET_BASE_URL:-https://api-devapps.vfdbank.systems/vtech-wallet/api/v2/wallet2}
       VFD_BILLS_BASE_URL: ${VFD_BILLS_BASE_URL:-https://api-devapps.vfdbank.systems/vtech-bills/api/v2/billspaymentstore}
       VFD_CONSUMER_KEY: ${VFD_CONSUMER_KEY:-}

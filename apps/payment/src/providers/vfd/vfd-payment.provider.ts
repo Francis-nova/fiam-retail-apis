@@ -58,9 +58,11 @@ function maskTail(value: string): string {
     : `${'*'.repeat(value.length - 4)}${value.slice(-4)}`;
 }
 
+const TOKEN_TTL_SECONDS = 3600;
+
 // VFD wallets API — https://vbaas-docs.vfdtech.ng/
-// Auth is a cached token (validityTime: "-1" = never expires, per VFD's
-// docs) — cached for the process lifetime, same shape as QoreIdBvnProvider's
+// Auth is a 1-hour token (validityTime is in minutes), cached in memory and
+// refreshed shortly before it expires — same shape as QoreIdBvnProvider's
 // token cache in apps/auth, but we still track expiresAt defensively and
 // clear+retry once on a rejected token.
 @Injectable()
@@ -102,7 +104,7 @@ export class VfdPaymentProvider implements PaymentProvider, BillsProvider {
       body: JSON.stringify({
         consumerKey,
         consumerSecret,
-        validityTime: '-1',
+        validityTime: String(TOKEN_TTL_SECONDS / 60),
       }),
     });
     const body = (await response
@@ -118,10 +120,11 @@ export class VfdPaymentProvider implements PaymentProvider, BillsProvider {
       );
     }
 
-    // expires_in from VFD is effectively infinite for validityTime "-1"
-    // (docs show it as Long.MAX_VALUE); clamp so the cache TTL math never
-    // overflows Date.now() + expiresIn * 1000.
-    const ttlSeconds = Math.min(body.data.expires_in ?? 3600, 86_400 * 30);
+    // Never cache past the hour we asked for, even if VFD reports longer.
+    const ttlSeconds = Math.min(
+      body.data.expires_in ?? TOKEN_TTL_SECONDS,
+      TOKEN_TTL_SECONDS,
+    );
     this.cachedToken = {
       accessToken: body.data.access_token,
       expiresAt: Date.now() + ttlSeconds * 1000,
