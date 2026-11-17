@@ -8,6 +8,7 @@ import { Transaction } from '../transactions/entities/transaction.entity';
 import { Beneficiary } from '../beneficiaries/entities/beneficiary.entity';
 import { BillBeneficiary } from '../bills/entities/bill-beneficiary.entity';
 import { WebhookEvent } from '../webhooks/entities/webhook-event.entity';
+import { StableStackCustomer } from '../crypto/entities/stablestack-customer.entity';
 import { PaymentConfig } from '../config/configuration';
 
 @Module({
@@ -25,6 +26,7 @@ import { PaymentConfig } from '../config/configuration';
           Beneficiary,
           BillBeneficiary,
           WebhookEvent,
+          StableStackCustomer,
         ],
         migrations: [__dirname + '/migrations/*{.ts,.js}'],
         synchronize: false,

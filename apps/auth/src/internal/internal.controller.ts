@@ -43,7 +43,14 @@ export class InternalController {
   async contact(@Param('id', new ParseUUIDPipe()) id: string) {
     const user = await this.usersService.findById(id);
     // `phone` is stored as 234XXXXXXXXXX, or null if the customer never added one.
-    return { email: user.email, firstName: user.firstName, phone: user.phone };
+    // lastName and tier: payment needs them to open a stablecoin wallet.
+    return {
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      phone: user.phone,
+      tier: user.tier,
+    };
   }
 
   // Called by payment from inside POST /payouts: the transaction PIN is

@@ -16,6 +16,7 @@ import { PayoutsModule } from './payouts/payouts.module';
 import { BillsModule } from './bills/bills.module';
 import { TreasuryModule } from './treasury/treasury.module';
 import { InternalModule } from './internal/internal.module';
+import { CryptoModule } from './crypto/crypto.module';
 
 @Module({
   imports: [
@@ -47,6 +48,7 @@ import { InternalModule } from './internal/internal.module';
     BillsModule,
     TreasuryModule,
     InternalModule,
+    CryptoModule,
   ],
   controllers: [AppController],
 })

@@ -74,9 +74,9 @@ export class WalletsService {
     }
     const newBalance = new Decimal(wallet.balance).plus(amount);
     await manager.update(Wallet, walletId, {
-      balance: newBalance.toFixed(4),
+      balance: newBalance.toFixed(8),
     });
-    wallet.balance = newBalance.toFixed(4);
+    wallet.balance = newBalance.toFixed(8);
     return wallet;
   }
 
@@ -106,9 +106,9 @@ export class WalletsService {
     }
     const newBalance = currentBalance.minus(amount);
     await manager.update(Wallet, walletId, {
-      balance: newBalance.toFixed(4),
+      balance: newBalance.toFixed(8),
     });
-    wallet.balance = newBalance.toFixed(4);
+    wallet.balance = newBalance.toFixed(8);
     return wallet;
   }
 }

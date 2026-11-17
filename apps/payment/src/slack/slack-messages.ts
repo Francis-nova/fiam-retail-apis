@@ -16,9 +16,19 @@ export function naira(value: string | number | Decimal): string {
   return `${amount.isNegative() ? '-' : ''}₦${whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}.${fraction}`;
 }
 
+// Naira as ₦; a stablecoin as "20.00 USDC".
+export function money(
+  value: string | number | Decimal,
+  currency?: string | null,
+): string {
+  if (!currency || currency === 'NGN') return naira(value);
+  return `${new Decimal(value).toFixed(2)} ${currency}`;
+}
+
 export type AlertableTransaction = Partial<
   Pick<
     Transaction,
+    | 'currency'
     | 'type'
     | 'kind'
     | 'billType'
@@ -62,10 +72,10 @@ export function transactionMessage(
   const ok = outcome === 'SUCCESSFUL';
   const direction =
     tx.type === TransactionType.CREDIT ? ':arrow_down:' : ':arrow_up:';
-  const headline = `${ok ? ':white_check_mark:' : ':x:'} ${direction} *${title(tx)}* ${ok ? 'successful' : 'FAILED'} — ${naira(tx.amount ?? 0)} · ${context.environment}`;
+  const headline = `${ok ? ':white_check_mark:' : ':x:'} ${direction} *${title(tx)}* ${ok ? 'successful' : 'FAILED'} — ${money(tx.amount ?? 0, tx.currency)} · ${context.environment}`;
   const lines = [headline];
   if (tx.fee && new Decimal(tx.fee).greaterThan(0)) {
-    lines.push(`• fee: ${naira(tx.fee)}`);
+    lines.push(`• fee: ${money(tx.fee, tx.currency)}`);
   }
   if (tx.reference) lines.push(`• reference: ${tx.reference}`);
   if (context.userId) lines.push(`• user: ${context.userId}`);
