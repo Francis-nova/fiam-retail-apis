@@ -109,7 +109,7 @@ export default (): PaymentConfig => ({
   vfd: {
     authBaseUrl:
       process.env.VFD_AUTH_BASE_URL ??
-      'https://api-devapps.vfdbank.systems/vfd-tech/baas-portal/v1.1/baasauth',
+      'https://api-devapps.vfdbank.systems/vtech-wallet/api/v2/wallet2',
     walletBaseUrl:
       process.env.VFD_WALLET_BASE_URL ??
       'https://api-devapps.vfdbank.systems/vtech-wallet/api/v2/wallet2',

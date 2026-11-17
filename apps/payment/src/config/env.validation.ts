@@ -50,9 +50,7 @@ export const envSchema = Joi.object<EnvVars>({
   // without them, rather than blocking the whole service from starting.
   VFD_AUTH_BASE_URL: Joi.string()
     .uri()
-    .default(
-      'https://api-devapps.vfdbank.systems/vfd-tech/baas-portal/v1.1/baasauth',
-    ),
+    .default('https://api-devapps.vfdbank.systems/vtech-wallet/api/v2/wallet2'),
   VFD_WALLET_BASE_URL: Joi.string()
     .uri()
     .default('https://api-devapps.vfdbank.systems/vtech-wallet/api/v2/wallet2'),
