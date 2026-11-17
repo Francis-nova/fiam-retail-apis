@@ -95,7 +95,7 @@ export class AddressService {
     });
   }
 
-  private async insertActiveAddress(
+  async insertActiveAddress(
     walletId: string,
     account: ProviderAccount,
     manager?: EntityManager,

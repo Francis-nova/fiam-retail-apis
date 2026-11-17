@@ -24,15 +24,15 @@ export class Wallet {
   @Column({ type: 'enum', enum: CurrencyCode })
   currency!: CurrencyCode;
 
-  // Naira decimal. Postgres numeric is exact, but JS Number/native +/- are
+  // Decimal in the wallet's currency (8 places, for stablecoins). Postgres numeric is exact, but JS Number/native +/- are
   // not — TypeORM returns numeric columns as JS strings, and all arithmetic
   // must go through decimal.js (`new Decimal(wallet.balance)`) in the
   // service layer, never raw string/Number math.
   @Column({
     name: 'balance',
     type: 'numeric',
-    precision: 15,
-    scale: 4,
+    precision: 20,
+    scale: 8,
     default: 0,
   })
   balance!: string;

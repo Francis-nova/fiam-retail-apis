@@ -5,6 +5,7 @@ import {
   BillType,
 } from '../transactions/entities/transaction.entity';
 import {
+  money,
   naira,
   poolBalanceMessage,
   transactionMessage,
@@ -18,6 +19,14 @@ describe('naira', () => {
     expect(naira(0)).toBe('₦0.00');
     expect(naira(new Decimal('-2500'))).toBe('-₦2,500.00');
     expect(naira('9000.0000')).toBe('₦9,000.00');
+  });
+});
+
+describe('money', () => {
+  it('uses ₦ for naira and the code for stablecoins', () => {
+    expect(money('9000', 'NGN')).toBe('₦9,000.00');
+    expect(money('9000')).toBe('₦9,000.00');
+    expect(money('20.00000000', 'USDC')).toBe('20.00 USDC');
   });
 });
 

@@ -151,7 +151,7 @@ export class Transaction {
   @Column({ name: 'account_number', type: 'varchar' })
   accountNumber: string;
 
-  @Column({ name: 'amount', type: 'numeric', precision: 15, scale: 4 })
+  @Column({ name: 'amount', type: 'numeric', precision: 20, scale: 8 })
   amount: string;
 
   // The transfer fee charged on top of amount for a DEBIT (payout) —
@@ -161,8 +161,8 @@ export class Transaction {
   @Column({
     name: 'fee',
     type: 'numeric',
-    precision: 15,
-    scale: 4,
+    precision: 20,
+    scale: 8,
     nullable: true,
   })
   fee: string | null;
@@ -172,8 +172,8 @@ export class Transaction {
   @Column({
     name: 'fee_vat',
     type: 'numeric',
-    precision: 15,
-    scale: 4,
+    precision: 20,
+    scale: 8,
     nullable: true,
   })
   feeVat: string | null;
@@ -181,8 +181,8 @@ export class Transaction {
   @Column({
     name: 'stamp_duty',
     type: 'numeric',
-    precision: 15,
-    scale: 4,
+    precision: 20,
+    scale: 8,
     nullable: true,
   })
   stampDuty: string | null;
@@ -206,8 +206,8 @@ export class Transaction {
   @Column({
     name: 'balance_after',
     type: 'numeric',
-    precision: 15,
-    scale: 4,
+    precision: 20,
+    scale: 8,
     nullable: true,
   })
   balanceAfter: string | null;

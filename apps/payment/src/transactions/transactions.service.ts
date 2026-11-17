@@ -74,7 +74,7 @@ export class TransactionsService {
           : TransactionStatus.UNMATCHED,
         provider: input.provider,
         accountNumber: input.accountNumber,
-        amount: input.amount.toFixed(4),
+        amount: input.amount.toFixed(8),
         reference: input.reference,
         externalId: input.externalId ?? null,
         narration: input.narration ?? null,

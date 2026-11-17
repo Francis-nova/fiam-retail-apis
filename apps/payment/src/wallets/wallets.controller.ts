@@ -12,6 +12,8 @@ export interface WalletSummary {
   provider: string | null;
   accountNumber: string | null;
   accountName: string | null;
+  // Stablecoin wallets only: the address's network (e.g. 'polygon').
+  network: string | null;
 }
 
 @Controller('wallets')
@@ -43,6 +45,9 @@ export class WalletsController {
           provider: address?.provider ?? null,
           accountNumber: address?.providerAccountNumber ?? null,
           accountName: address?.providerAccountName ?? null,
+          network:
+            (address?.providerMetadata as { network?: string } | null)
+              ?.network ?? null,
         };
       }),
     );

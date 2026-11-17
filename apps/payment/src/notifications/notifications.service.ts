@@ -17,6 +17,7 @@ import { formatTokenForDisplay } from '../providers/vfd/vfd-bill-token';
 import { BILL_CUSTOMER_LABEL, BILL_TYPE_LABEL } from '../bills/bill-labels';
 import { BillType } from '../transactions/entities/transaction.entity';
 import { PaymentSlackNotifier } from '../slack/payment-slack.notifier';
+import { money } from '../slack/slack-messages';
 import type {
   AlertableTransaction,
   PaymentOutcome,
@@ -74,6 +75,7 @@ type NotifiableTransaction = Pick<Transaction, 'id' | 'walletId' | 'amount'> &
   Partial<
     Pick<
       Transaction,
+      | 'currency'
       | 'reference'
       | 'narration'
       | 'accountNumber'
@@ -171,7 +173,12 @@ export class NotificationsService {
           // registers each device under it.
           recipient: wallet.userId,
           template: TEMPLATE_BY_EVENT[event],
-          data: { amount: transaction.amount, transactionId: transaction.id },
+          data: {
+            amount: transaction.amount,
+            // Postoffice formats NGN as ₦ and anything else as "<amount> <code>".
+            ...(transaction.currency ? { currency: transaction.currency } : {}),
+            transactionId: transaction.id,
+          },
           requestedAt: new Date().toISOString(),
         }),
       );
@@ -225,7 +232,7 @@ export class NotificationsService {
             name: contact.firstName,
             firstName: contact.firstName,
             direction,
-            amount: naira(transaction.amount),
+            amount: money(transaction.amount, transaction.currency),
             counterparty,
             reference: transaction.reference ?? transaction.id,
             status: 'Successful',

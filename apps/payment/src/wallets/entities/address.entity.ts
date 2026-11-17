@@ -15,6 +15,9 @@ export enum PaymentProviderKey {
   // Not a real provider: marks transactions posted by staff via the admin
   // console. Never registered in PaymentProviderRegistryService.
   MANUAL = 'MANUAL',
+  // USDC/USDT wallets. providerAccountNumber = the blockchain deposit
+  // address; providerMetadata = { network, stablestackWalletId }.
+  STABLESTACK = 'STABLESTACK',
 }
 
 export enum AddressStatus {

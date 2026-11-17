@@ -35,7 +35,19 @@ export interface PaymentConfig {
     // Raw config strings (e.g. 'vfd'), same lowercase convention as
     // SMS_PROVIDER/KYC_PROVIDER — mapped to PaymentProviderKey by
     // PaymentProviderRegistryService, not here.
-    providerByCurrency: Record<CurrencyCode, string>;
+    // Only bank-account currencies (NGN). Stablecoins don't go through the
+    // provider registry; see `stablestack` below.
+    providerByCurrency: Partial<Record<CurrencyCode, string>>;
+  };
+  // USDC/USDT wallets (apps/payment/src/crypto). Blank apiKey = crypto is off.
+  stablestack: {
+    baseUrl: string;
+    apiKey: string;
+    // The webhook endpoint's signing secret from the StableStack dashboard.
+    webhookSecret: string;
+    // Fiam's markup on StableStack's NGN rate, in percent ("1" = 1%). The
+    // rate customers see is StableStack's rate less this.
+    ngnMarkupPercent: string;
   };
   // One Slack incoming webhook per channel; blank = that feed is off.
   slack: {
@@ -98,6 +110,14 @@ export default (): PaymentConfig => ({
     providerByCurrency: {
       [CurrencyCode.NGN]: process.env.PAYMENT_PROVIDER_NGN ?? 'vfd',
     },
+  },
+  stablestack: {
+    baseUrl:
+      process.env.STABLESTACK_BASE_URL ??
+      'https://api-staging.stablestack.com/api',
+    apiKey: process.env.STABLESTACK_API_KEY ?? '',
+    webhookSecret: process.env.STABLESTACK_WEBHOOK_SECRET ?? '',
+    ngnMarkupPercent: process.env.CRYPTO_NGN_MARKUP_PERCENT?.trim() || '1',
   },
   slack: {
     paymentsWebhookUrl: process.env.SLACK_WEBHOOK_PAYMENTS ?? '',

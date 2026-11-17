@@ -5,13 +5,17 @@ export function isPushTemplate(value: string): value is PushTemplate {
   return Object.values<string>(PushTemplate).includes(value);
 }
 
-function naira(raw: string | undefined): string {
+// ₦ for naira (and for producers that send no currency); "20.00 USDC" otherwise.
+function money(raw: string | undefined, currency?: string): string {
   const value = Number(raw);
-  if (!Number.isFinite(value)) return '₦0.00';
-  return `₦${value.toLocaleString('en-NG', {
+  const fixed = Number.isFinite(value) ? value : 0;
+  const formatted = fixed.toLocaleString('en-NG', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  })}`;
+  });
+  return !currency || currency === 'NGN'
+    ? `₦${formatted}`
+    : `${formatted} ${currency}`;
 }
 
 // Postoffice owns the wording — producers only send the template key and
@@ -20,7 +24,7 @@ export function renderPush(
   template: PushTemplate,
   data: Record<string, string>,
 ): PushPayload {
-  const amount = naira(data.amount);
+  const amount = money(data.amount, data.currency);
   const tapData = data.transactionId
     ? { type: 'transaction', transactionId: data.transactionId }
     : undefined;
