@@ -195,6 +195,11 @@ services:
       VFD_BANK_CODE: ${VFD_BANK_CODE:-999999}
       VFD_WALLET_NAME: ${VFD_WALLET_NAME:-ADL}
       BILLS_SERVICE_FEE: ${BILLS_SERVICE_FEE:-100}
+      # StableStack (USDC/USDT wallets); blank API key = stablecoin endpoints return 503.
+      STABLESTACK_BASE_URL: ${STABLESTACK_BASE_URL:-https://api-staging.stablestack.com/api}
+      STABLESTACK_API_KEY: ${STABLESTACK_API_KEY:-}
+      STABLESTACK_WEBHOOK_SECRET: ${STABLESTACK_WEBHOOK_SECRET:-}
+      CRYPTO_NGN_MARKUP_PERCENT: ${CRYPTO_NGN_MARKUP_PERCENT:-1}
       # Slack incoming webhooks; blank = that feed is off.
       SLACK_WEBHOOK_PAYMENTS: ${SLACK_WEBHOOK_PAYMENTS:-}
       SLACK_WEBHOOK_POOL_BALANCE: ${SLACK_WEBHOOK_POOL_BALANCE:-}
