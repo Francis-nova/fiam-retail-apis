@@ -19,6 +19,8 @@ async function bootstrap() {
   initErrorTracking('payment');
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     bufferLogs: true,
+    // Keeps req.rawBody so a rejected webhook can be logged exactly as sent.
+    rawBody: true,
   });
   app.useLogger(app.get(PinoLogger));
   app.use(requestContextMiddleware);
