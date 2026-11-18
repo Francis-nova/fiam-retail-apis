@@ -2,24 +2,34 @@ import { createHmac, timingSafeEqual } from 'crypto';
 
 const MAX_AGE_MS = 5 * 60 * 1000;
 
-// StableStack signs `${t}.${JSON.stringify(payloadWithoutSignature)}` with
-// HMAC-SHA256 and puts `t=<ms>,s=<hex>` in the body's `signature` field
-// (https://docs.stablestack.com/webhooks/security). Re-serialising the parsed
-// body matches theirs because JSON.parse keeps key order.
+// Mirrors https://docs.stablestack.com/webhooks/security: the body's
+// `signature` is "t=<ms>,s=<hex>", where s = HMAC-SHA256 of
+// `${t}.${JSON.stringify(payloadWithoutSignature)}`. JSON.parse keeps key
+// order, so re-serialising the parsed body reproduces what they signed.
 export function isValidStableStackSignature(
   body: Record<string, unknown>,
   secret: string,
   now = Date.now(),
 ): boolean {
-  const { signature, ...rest } = body;
+  const { signature, ...payloadWithoutSignature } = body;
   if (typeof signature !== 'string' || !secret) return false;
-  const match = /^t=(\d+),s=([0-9a-f]{64})$/i.exec(signature);
-  if (!match) return false;
-  const [, t, received] = match;
-  if (Math.abs(now - Number(t)) > MAX_AGE_MS) return false;
 
-  const expected = createHmac('sha256', secret)
-    .update(`${t}.${JSON.stringify(rest)}`)
+  const parts = signature.split(',').map((p) => p.trim());
+  const timestamp = parts.find((p) => p.startsWith('t='))?.slice(2);
+  const receivedSig = parts.find((p) => p.startsWith('s='))?.slice(2);
+  if (!timestamp || !receivedSig) return false;
+
+  const eventTime = parseInt(timestamp, 10);
+  if (!Number.isFinite(eventTime) || Math.abs(now - eventTime) > MAX_AGE_MS) {
+    return false;
+  }
+
+  const expectedBuf = createHmac('sha256', secret)
+    .update(`${timestamp}.${JSON.stringify(payloadWithoutSignature)}`)
     .digest();
-  return timingSafeEqual(expected, Buffer.from(received, 'hex'));
+  const receivedBuf = Buffer.from(receivedSig, 'hex');
+  return (
+    expectedBuf.length === receivedBuf.length &&
+    timingSafeEqual(expectedBuf, receivedBuf)
+  );
 }
