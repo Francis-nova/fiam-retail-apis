@@ -113,7 +113,7 @@ export default (): PaymentConfig => ({
   },
   stablestack: {
     baseUrl:
-      process.env.STABLESTACK_BASE_URL ??
+      process.env.STABLESTACK_BASE_URL?.trim() ||
       'https://api-staging.stablestack.com/api',
     apiKey: process.env.STABLESTACK_API_KEY ?? '',
     webhookSecret: process.env.STABLESTACK_WEBHOOK_SECRET ?? '',
