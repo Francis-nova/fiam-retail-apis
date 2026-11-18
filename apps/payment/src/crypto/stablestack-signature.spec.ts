@@ -24,6 +24,13 @@ describe('isValidStableStackSignature', () => {
     expect(isValidStableStackSignature(signed(payload), SECRET, T)).toBe(true);
   });
 
+  it('accepts the parts in any order with spaces, as the docs parse them', () => {
+    const body = signed(payload);
+    const [t, sig] = body.signature.split(',');
+    body.signature = `${sig}, ${t}`;
+    expect(isValidStableStackSignature(body, SECRET, T)).toBe(true);
+  });
+
   it('rejects a tampered payload', () => {
     const body = signed(payload);
     body.data = { amount: '2000.00000000', status: 'COMPLETED' };
