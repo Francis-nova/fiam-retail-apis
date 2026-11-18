@@ -1,18 +1,22 @@
 import {
   Body,
   Controller,
+  Headers,
   Get,
   HttpCode,
   HttpStatus,
   Logger,
   Post,
+  Req,
+  type RawBodyRequest,
   UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import type { Request } from 'express';
 import { ApiBearerAuth } from '@nestjs/swagger';
 import { SkipThrottle } from '@nestjs/throttler';
-import { reportIssueToSlack } from '@app/common';
+import { reportIssueToSlack, safeJson } from '@app/common';
 import { PaymentConfig } from '../config/configuration';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
@@ -58,7 +62,11 @@ export class StableStackWebhookController {
   // validation must not strip or reshape it first.
   @Post()
   @HttpCode(HttpStatus.OK)
-  async receive(@Body() body: Record<string, unknown>) {
+  async receive(
+    @Body() body: Record<string, unknown>,
+    @Headers() headers: Record<string, string>,
+    @Req() req: RawBodyRequest<Request>,
+  ) {
     const secret = this.configService.get('stablestack.webhookSecret', {
       infer: true,
     });
@@ -66,9 +74,25 @@ export class StableStackWebhookController {
       // StableStack never retries a 4xx: this event is lost unless it is
       // replayed from their dashboard, so someone has to hear about it.
       const eventId = typeof body?.id === 'string' ? body.id : 'unknown';
-      this.logger.warn(`Rejected StableStack webhook ${eventId}`);
+      // Age tells a stale/replayed event (> 300s) apart from a wrong secret.
+      const t = /^t=(\d+),/.exec(
+        typeof body?.signature === 'string' ? body.signature : '',
+      )?.[1];
+      const ageSeconds = t
+        ? Math.round((Date.now() - Number(t)) / 1000)
+        : 'no signature';
+      // Redacted headers/body for debugging. rawMatchesParsed=false means our
+      // re-serialised body differs from the bytes they signed; true with a
+      // fresh age means the secret is wrong.
+      const rawMatchesParsed =
+        req.rawBody?.toString('utf8') === JSON.stringify(body);
+      this.logger.warn(
+        `Rejected StableStack webhook ${eventId} (age ${ageSeconds}s, rawMatchesParsed=${rawMatchesParsed}) headers=${safeJson(headers)} body=${safeJson(body)}`,
+      );
       reportIssueToSlack('StableStack webhook rejected: bad signature', {
         eventId,
+        ageSeconds,
+        secretSet: secret ? 'yes' : 'no',
       });
       throw new UnauthorizedException();
     }
