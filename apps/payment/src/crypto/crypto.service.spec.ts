@@ -1,7 +1,9 @@
 import Decimal from 'decimal.js';
+import { BadRequestException } from '@nestjs/common';
 import { CurrencyCode } from '@app/common';
 import { CryptoService, normaliseAddress } from './crypto.service';
 import { PaymentProviderKey } from '../wallets/entities/address.entity';
+import { StableStackClient } from './stablestack.client';
 
 const compliance = {
   accountPurpose: 'PROTECT_WEALTH',
@@ -12,7 +14,7 @@ const compliance = {
   acceptedRiskDisclosure: true,
 } as const;
 
-function setup(tier = 'TIER_3') {
+function setup(tier = 'TIER_3', existingCustomer: unknown = null) {
   const config = {
     get: (key: string) =>
       key === 'auth'
@@ -29,10 +31,22 @@ function setup(tier = 'TIER_3') {
       network: 'polygon',
     }),
     ngnRate: jest.fn().mockResolvedValue(new Decimal('1550')),
+    isValidAddress: jest.fn().mockResolvedValue(true),
+    withdrawalFees: jest.fn().mockResolvedValue({
+      platform: new Decimal('0.2'),
+      network: new Decimal('1'),
+      fiam: new Decimal('1'),
+    }),
+    createWithdrawal: jest
+      .fn()
+      .mockResolvedValue({ transaction_id: 'TXOUT', status: 'PENDING' }),
+    getTransaction: jest.fn(),
   };
   const wallet = { id: 'w-1', balance: '0.00000000' };
   const walletsService = {
     getOrCreateWallet: jest.fn().mockResolvedValue(wallet),
+    findByUserAndCurrency: jest.fn().mockResolvedValue(wallet),
+    debitForUpdate: jest.fn().mockResolvedValue({ balance: '0.00000000' }),
   };
   let active: unknown = null;
   const addressService = {
@@ -58,14 +72,44 @@ function setup(tier = 'TIER_3') {
     query: jest.fn().mockResolvedValue([]),
     release: jest.fn(),
   };
-  const dataSource = { createQueryRunner: () => runner };
-  let customer: unknown = null;
+  const saved: Record<string, unknown>[] = [];
+  const manager = {
+    create: (_e: unknown, v: Record<string, unknown>) => v,
+    save: (_e: unknown, v: Record<string, unknown>) => {
+      saved.push(v);
+      return Promise.resolve({ id: 't-1', ...v });
+    },
+  };
+  const dataSource = {
+    createQueryRunner: () => runner,
+    transaction: (cb: (m: typeof manager) => unknown) => cb(manager),
+  };
+  let customer: unknown = existingCustomer;
   const customers = {
     findOneBy: jest.fn(() => Promise.resolve(customer)),
     create: (v: unknown) => v,
     save: jest.fn((v: unknown) => Promise.resolve((customer = v))),
   };
   const webhookEvents = { create: (v: unknown) => v, save: jest.fn() };
+  const withdrawal = {
+    id: 't-1',
+    status: 'PROCESSING',
+    rawPayload: { quote: {} },
+  };
+  const transactions = {
+    findOneBy: jest.fn().mockResolvedValue(withdrawal),
+    findOneByOrFail: jest.fn().mockResolvedValue(withdrawal),
+    update: jest.fn().mockResolvedValue({ affected: 1 }),
+  };
+  const payoutsService = {
+    reverseFailedPayout: jest.fn(),
+    assertWithinTransferLimit: jest.fn(),
+  };
+  const pinVerifier = {
+    assertValid: jest.fn().mockResolvedValue({ transferLimit: null }),
+  };
+  const notifications = { notifyTransaction: jest.fn() };
+  const statusQueue = { add: jest.fn() };
 
   global.fetch = jest.fn().mockResolvedValue({
     ok: true,
@@ -87,8 +131,23 @@ function setup(tier = 'TIER_3') {
     dataSource as never,
     customers as never,
     webhookEvents as never,
+    transactions as never,
+    payoutsService as never,
+    pinVerifier as never,
+    notifications as never,
+    statusQueue as never,
   );
-  return { service, client, transactionsService, runner };
+  return {
+    service,
+    client,
+    transactionsService,
+    runner,
+    saved,
+    transactions,
+    payoutsService,
+    pinVerifier,
+    statusQueue,
+  };
 }
 
 describe('CryptoService.createWallet', () => {
@@ -188,5 +247,142 @@ describe('normaliseAddress', () => {
   it('lower-cases EVM addresses only', () => {
     expect(normaliseAddress('0xAbC')).toBe('0xabc');
     expect(normaliseAddress('TXvzrLA94eB1')).toBe('TXvzrLA94eB1');
+  });
+});
+
+const ssCustomer = { userId: 'u-1', stablestackCustomerId: 'cus-1' };
+const send = {
+  pin: '1234',
+  currency: CurrencyCode.USDC as const,
+  amount: '100',
+  address: '0xDeF4567890abcdef4567',
+};
+
+describe('CryptoService withdrawals', () => {
+  it('quotes every fee out of the amount', async () => {
+    const { service } = setup('TIER_3', ssCustomer);
+    await expect(
+      service.quoteWithdrawal('u-1', CurrencyCode.USDC, '100'),
+    ).resolves.toEqual({
+      currency: 'USDC',
+      network: 'polygon',
+      amount: '100.00000000',
+      platformFee: '0.20000000',
+      networkFee: '1.00000000',
+      fiamFee: '1.00000000',
+      totalFee: '2.20000000',
+      recipientReceives: '97.80000000',
+    });
+  });
+
+  it('refuses an amount the fees would swallow', async () => {
+    const { service } = setup('TIER_3', ssCustomer);
+    await expect(
+      service.quoteWithdrawal('u-1', CurrencyCode.USDC, '2'),
+    ).rejects.toThrow('The fees are 2.20 USDC');
+  });
+
+  it('holds the full amount, sends it, and swaps in their transaction id', async () => {
+    const { service, client, saved, transactions, statusQueue, pinVerifier } =
+      setup('TIER_3', ssCustomer);
+    await service.withdraw('u-1', send);
+
+    expect(pinVerifier.assertValid).toHaveBeenCalledWith('u-1', '1234');
+    expect(saved[0]).toMatchObject({
+      status: 'PROCESSING',
+      kind: 'PAYOUT',
+      accountNumber: '0xdef4567890abcdef4567',
+      amount: '97.80000000',
+      fee: '2.20000000',
+    });
+    const [[sent]] = client.createWithdrawal.mock.calls as [
+      [{ amount: Decimal }],
+    ];
+    expect(sent.amount.toString()).toBe('100');
+    expect(transactions.update).toHaveBeenCalledWith(
+      't-1',
+      expect.objectContaining({ reference: 'TXOUT' }),
+    );
+    expect(statusQueue.add).toHaveBeenCalled();
+  });
+
+  it('checks the new-device cap in naira while it applies', async () => {
+    const { service, payoutsService, pinVerifier, saved } = setup(
+      'TIER_3',
+      ssCustomer,
+    );
+    const limit = { amount: '20000.00', since: 'x', until: 'y' };
+    pinVerifier.assertValid.mockResolvedValue({ transferLimit: limit });
+    await service.withdraw('u-1', send);
+    // 100 USDC at 1534.50 (StableStack 1550 less our 1%).
+    const [[, user, ngnWalletId, ngn, passed]] = payoutsService
+      .assertWithinTransferLimit.mock.calls as [
+      [unknown, string, string, Decimal, unknown],
+    ];
+    expect([user, ngnWalletId, ngn.toString(), passed]).toEqual([
+      'u-1',
+      'w-1',
+      '153450',
+      limit,
+    ]);
+    expect(saved[0]).toMatchObject({
+      rawPayload: { quote: { ngnValue: '153450.00' } },
+    });
+  });
+
+  it('refunds when StableStack refuses the withdrawal', async () => {
+    const { service, client, payoutsService } = setup('TIER_3', ssCustomer);
+    client.createWithdrawal.mockRejectedValue(new BadRequestException('no'));
+    await expect(service.withdraw('u-1', send)).rejects.toThrow('no');
+    expect(payoutsService.reverseFailedPayout).toHaveBeenCalledWith('t-1');
+  });
+
+  it('settles from the outbound webhook', async () => {
+    const { service, transactions, payoutsService } = setup();
+    const outbound = (status: string) => ({
+      id: 'evt_3',
+      event_type: 'wallet.transaction.outbound',
+      data: { transaction_id: 'TXOUT', status, crypto_transaction_id: '0xh' },
+    });
+
+    await service.handleWebhook(outbound('COMPLETED'));
+    expect(transactions.update).toHaveBeenCalledWith(
+      { id: 't-1', status: 'PROCESSING' },
+      expect.objectContaining({
+        status: 'SUCCESSFUL',
+        rawPayload: { quote: {}, cryptoTransactionId: '0xh' },
+      }),
+    );
+
+    await service.handleWebhook(outbound('FAILED'));
+    expect(payoutsService.reverseFailedPayout).toHaveBeenCalledWith('t-1');
+  });
+});
+
+describe('StableStackClient.withdrawalFees', () => {
+  it('reads the platform %, network fee and our merchant fee', async () => {
+    const client = new StableStackClient({
+      get: () => ({ baseUrl: 'http://ss', apiKey: 'k' }),
+    } as never);
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          data: {
+            fees: { fee_type: 'percentage', fee_value: '0.2000' },
+            otherFee: { fee: '1.00' },
+            merchant_fee: { amount: '1.000000' },
+          },
+        }),
+    }) as never;
+    const fees = await client.withdrawalFees({
+      customerId: 'cus-1',
+      currency: 'USDC',
+      network: 'polygon',
+      amount: new Decimal('123.456789'),
+    });
+    expect(fees.platform.toString()).toBe('0.246913');
+    expect(fees.network.toString()).toBe('1');
+    expect(fees.fiam.toString()).toBe('1');
   });
 });

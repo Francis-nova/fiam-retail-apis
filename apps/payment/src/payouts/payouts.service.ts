@@ -238,6 +238,7 @@ export class PayoutsService {
       );
       await this.assertWithinTransferLimit(
         manager,
+        userId,
         wallet.id,
         amount,
         transferLimit,
@@ -419,19 +420,54 @@ export class PayoutsService {
     return new Decimal(row?.total ?? 0);
   }
 
+  // Naira value of crypto sends in the window, at the rate each was quoted
+  // at (CryptoService stores it as quote.ngnValue).
+  private async cryptoOutflowNgn(
+    manager: EntityManager,
+    userId: string,
+    since: Date,
+  ): Promise<Decimal> {
+    const rows: { total: string | null }[] = await manager.query(
+      `SELECT SUM((t."raw_payload"->'quote'->>'ngnValue')::numeric) AS total
+         FROM "transactions" t JOIN "wallets" w ON w."id" = t."wallet_id"
+        WHERE w."user_id" = $1 AND t."provider" = $2 AND t."type" = 'DEBIT'
+          AND t."status" IN ('PENDING','PROCESSING','SUCCESSFUL')
+          AND t."created_at" >= $3`,
+      [userId, PaymentProviderKey.STABLESTACK, since],
+    );
+    return new Decimal(rows[0]?.total ?? 0);
+  }
+
+  // Naira and crypto sends together, so the cap can't be doubled by
+  // switching between them.
+  private async newDeviceOutflow(
+    manager: EntityManager,
+    userId: string,
+    ngnWalletId: string | null,
+    since: Date,
+  ): Promise<Decimal> {
+    const ngn = ngnWalletId
+      ? await this.outflowSince(manager, ngnWalletId, since)
+      : new Decimal(0);
+    return ngn.plus(await this.cryptoOutflowNgn(manager, userId, since));
+  }
+
   // CBN circular (12 Mar 2026): after activating the app on a new device an
   // existing customer may send at most N20,000 in total during the first 24
   // hours. The window and cap come from auth (which knows about the device).
-  private async assertWithinTransferLimit(
+  // Public for crypto sends, which pass their naira value as `amount`.
+  async assertWithinTransferLimit(
     manager: EntityManager,
-    walletId: string,
+    userId: string,
+    ngnWalletId: string | null,
     amount: Decimal,
     limit: TransferLimit | null,
   ): Promise<void> {
     if (!limit) return;
-    const used = await this.outflowSince(
+    const used = await this.newDeviceOutflow(
       manager,
-      walletId,
+      userId,
+      ngnWalletId,
       new Date(limit.since),
     );
     const remaining = Decimal.max(new Decimal(limit.amount).minus(used), 0);
@@ -532,13 +568,12 @@ export class PayoutsService {
       userId,
       CurrencyCode.NGN,
     );
-    const used = wallet
-      ? await this.outflowSince(
-          this.dataSource.manager,
-          wallet.id,
-          new Date(limit.since),
-        )
-      : new Decimal(0);
+    const used = await this.newDeviceOutflow(
+      this.dataSource.manager,
+      userId,
+      wallet?.id ?? null,
+      new Date(limit.since),
+    );
     const remaining = Decimal.max(new Decimal(limit.amount).minus(used), 0);
     return {
       restricted: true as const,
@@ -699,7 +734,7 @@ export class PayoutsService {
           status: TransactionStatus.SUCCESSFUL,
           provider: transaction.provider,
           accountNumber: transaction.accountNumber,
-          amount: refund.toFixed(4),
+          amount: refund.toFixed(8),
           balanceAfter: wallet.balance,
           reference: `REV-${transaction.reference}`,
           beneficiaryId: transaction.beneficiaryId,

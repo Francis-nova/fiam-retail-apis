@@ -17,6 +17,18 @@ export interface StableStackWallet {
   network: string;
 }
 
+interface StableStackFeeRule {
+  fee_type?: 'percentage' | 'flat';
+  fee_value?: string;
+}
+
+export interface StableStackTransaction {
+  transaction_id: string;
+  status: string;
+  crypto_transaction_id?: string | null;
+  reason?: string | null;
+}
+
 // Thin client for the StableStack API (https://docs.stablestack.com). Every
 // call sends the `x-api-key` header; responses are `{ status, data }`.
 @Injectable()
@@ -72,6 +84,72 @@ export class StableStackClient {
       );
     }
     return { id: data.id, address: address.address, network: address.network };
+  }
+
+  async isValidAddress(currency: string, address: string): Promise<boolean> {
+    const data = await this.request<{ valid?: boolean }>(
+      'GET',
+      `/payouts/validate-address?currency=${currency.toLowerCase()}&address=${encodeURIComponent(address)}`,
+    );
+    return data.valid === true;
+  }
+
+  // Every charge on a customer wallet withdrawal of `amount`, each deducted
+  // from what reaches the recipient: StableStack's platform fee, the network
+  // (gas) fee, and our merchant fee rule (null when no rule is active).
+  async withdrawalFees(input: {
+    customerId: string;
+    currency: string;
+    network: string;
+    amount: Decimal;
+  }): Promise<{ platform: Decimal; network: Decimal; fiam: Decimal }> {
+    const data = await this.request<{
+      fees?: StableStackFeeRule | StableStackFeeRule[];
+      otherFee?: { fee?: string } | null;
+      merchant_fee?: { amount?: string } | null;
+    }>(
+      'GET',
+      `/payouts/fees?currency_type=STABLECOIN&amount=${input.amount.toString()}&from_currency=${input.currency.toLowerCase()}&network=${input.network}&customer_id=${input.customerId}`,
+    );
+    const rule = Array.isArray(data.fees) ? data.fees[0] : data.fees;
+    const value = new Decimal(rule?.fee_value ?? 0);
+    const platform =
+      rule?.fee_type === 'percentage'
+        ? input.amount
+            .times(value)
+            .div(100)
+            .toDecimalPlaces(6, Decimal.ROUND_DOWN)
+        : value;
+    return {
+      platform,
+      network: new Decimal(data.otherFee?.fee ?? 0),
+      fiam: new Decimal(data.merchant_fee?.amount ?? 0),
+    };
+  }
+
+  async createWithdrawal(input: {
+    customerId: string;
+    currency: string;
+    network: string;
+    address: string;
+    amount: Decimal;
+    narration: string;
+  }): Promise<StableStackTransaction> {
+    return this.request<StableStackTransaction>('POST', '/payouts/wallets', {
+      customer_id: input.customerId,
+      currency: input.currency,
+      network: input.network,
+      address: input.address,
+      amount: input.amount.toNumber(),
+      narration: input.narration,
+    });
+  }
+
+  async getTransaction(transactionId: string): Promise<StableStackTransaction> {
+    return this.request<StableStackTransaction>(
+      'GET',
+      `/customers/transactions/by_txid/${encodeURIComponent(transactionId)}`,
+    );
   }
 
   // StableStack's NGN per 1 USDC. USDT uses the same rate: both are 1:1 with USD.

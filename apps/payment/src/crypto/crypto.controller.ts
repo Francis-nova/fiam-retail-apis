@@ -7,6 +7,7 @@ import {
   HttpStatus,
   Logger,
   Post,
+  Query,
   Req,
   type RawBodyRequest,
   UnauthorizedException,
@@ -23,6 +24,10 @@ import { CurrentUser } from '../auth/current-user.decorator';
 import type { AuthenticatedUser } from '../auth/current-user.decorator';
 import { CryptoService } from './crypto.service';
 import { CreateCryptoWalletDto } from './dto/create-crypto-wallet.dto';
+import {
+  CreateCryptoWithdrawalDto,
+  QuoteCryptoWithdrawalDto,
+} from './dto/crypto-withdrawal.dto';
 import { isValidStableStackSignature } from './stablestack-signature';
 
 @Controller('crypto')
@@ -44,6 +49,33 @@ export class CryptoController {
   @ApiBearerAuth()
   rate() {
     return this.cryptoService.ngnRate();
+  }
+
+  // Fee breakdown before the customer confirms: StableStack's platform and
+  // network fees, our fee, and what the recipient gets.
+  @Get('withdrawals/quote')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  quoteWithdrawal(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() q: QuoteCryptoWithdrawalDto,
+  ) {
+    return this.cryptoService.quoteWithdrawal(
+      user.userId,
+      q.currency,
+      q.amount,
+      q.address,
+    );
+  }
+
+  @Post('withdrawals')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  withdraw(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: CreateCryptoWithdrawalDto,
+  ) {
+    return this.cryptoService.withdraw(user.userId, dto);
   }
 }
 
@@ -71,8 +103,8 @@ export class StableStackWebhookController {
       infer: true,
     });
     if (!isValidStableStackSignature(body ?? {}, secret)) {
-      // StableStack never retries a 4xx: this event is lost unless it is
-      // replayed from their dashboard, so someone has to hear about it.
+      // StableStack retries ~every 10 min with the original t, so once an
+      // event is past the 5-min window it can only come back as a fresh event.
       const eventId = typeof body?.id === 'string' ? body.id : 'unknown';
       // Age tells a stale/replayed event (> 300s) apart from a wrong secret.
       const t = /^t=(\d+),/.exec(

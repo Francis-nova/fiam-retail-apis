@@ -6,10 +6,13 @@ function run(used: string, amount: string, limit: object | null) {
   const service = Object.create(PayoutsService.prototype) as {
     assertWithinTransferLimit: (...a: unknown[]) => Promise<void>;
     outflowSince: jest.Mock;
+    cryptoOutflowNgn: jest.Mock;
   };
   service.outflowSince = jest.fn().mockResolvedValue(new Decimal(used));
+  service.cryptoOutflowNgn = jest.fn().mockResolvedValue(new Decimal(0));
   return service.assertWithinTransferLimit(
     {},
+    'user',
     'wallet',
     new Decimal(amount),
     limit,
@@ -47,5 +50,24 @@ describe('new-device transfer limit', () => {
     await expect(run('20000', '1', LIMIT)).rejects.toMatchObject({
       response: { remaining: '0.00' },
     });
+  });
+
+  it('counts crypto sends (in naira) against the same cap, with no naira wallet', async () => {
+    const service = Object.create(PayoutsService.prototype) as {
+      assertWithinTransferLimit: (...a: unknown[]) => Promise<void>;
+      outflowSince: jest.Mock;
+      cryptoOutflowNgn: jest.Mock;
+    };
+    service.outflowSince = jest.fn().mockResolvedValue(new Decimal(5000));
+    service.cryptoOutflowNgn = jest.fn().mockResolvedValue(new Decimal(15000));
+    await expect(
+      service.assertWithinTransferLimit(
+        {},
+        'user',
+        null,
+        new Decimal('5000.01'),
+        LIMIT,
+      ),
+    ).rejects.toMatchObject({ response: { remaining: '5000.00' } });
   });
 });
