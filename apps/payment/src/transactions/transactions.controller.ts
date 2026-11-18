@@ -1,6 +1,7 @@
 import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth } from '@nestjs/swagger';
 import { TransactionsService } from './transactions.service';
+import { PaymentProviderKey } from '../wallets/entities/address.entity';
 import {
   Transaction,
   TransactionStatus,
@@ -85,6 +86,12 @@ function toResponse(transaction: Transaction): TransactionResponse {
   if (transaction.bill) {
     counterpartyName = transaction.bill.billerName;
     counterpartyAccountNumber = transaction.bill.customerId;
+  } else if (
+    transaction.type === TransactionType.DEBIT &&
+    transaction.provider === PaymentProviderKey.STABLESTACK
+  ) {
+    // Crypto send: the destination address; the network sits in narration.
+    counterpartyAccountNumber = transaction.accountNumber;
   } else if (transaction.type === TransactionType.DEBIT) {
     counterpartyName = transaction.beneficiary?.accountName ?? null;
     counterpartyAccountNumber = transaction.beneficiary?.accountNumber ?? null;
@@ -117,10 +124,13 @@ function toResponse(transaction: Transaction): TransactionResponse {
     balanceAfter: transaction.balanceAfter,
     reference: transaction.reference,
     // Older payouts stored VFD's txnId (= our reference) here, not a real session ID.
+    // Crypto sends keep the on-chain hash in rawPayload (see CryptoService).
     sessionId:
-      transaction.externalId === transaction.reference
-        ? null
-        : transaction.externalId,
+      typeof transaction.rawPayload?.cryptoTransactionId === 'string'
+        ? transaction.rawPayload.cryptoTransactionId
+        : transaction.externalId === transaction.reference
+          ? null
+          : transaction.externalId,
     provider: transaction.provider,
     narration: transaction.narration,
     counterpartyName,

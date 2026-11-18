@@ -54,7 +54,7 @@ describe('PayoutsService.reverseFailedPayout', () => {
     expect(saved[0]).toMatchObject({
       type: TransactionType.CREDIT,
       kind: TransactionKind.REVERSAL,
-      amount: '15076.8800',
+      amount: '15076.88000000',
       reference: 'REV-ADL1',
     });
   });
