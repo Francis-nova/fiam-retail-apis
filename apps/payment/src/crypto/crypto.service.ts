@@ -48,6 +48,26 @@ type Stablecoin = CurrencyCode.USDC | CurrencyCode.USDT;
 
 // shortcut: one network per coin, so one active address per wallet; allow
 // several active addresses per wallet before adding a second network.
+// Payouts can go out on any network StableStack supports for the coin
+// (POST /payouts/wallets); the first is the default, matching deposits.
+export const PAYOUT_NETWORKS: Record<Stablecoin, string[]> = {
+  [CurrencyCode.USDC]: ['polygon', 'erc20'],
+  [CurrencyCode.USDT]: ['trc20', 'erc20', 'bep20'],
+};
+
+const NETWORK_LABEL: Record<string, string> = {
+  polygon: 'Polygon',
+  erc20: 'ERC-20',
+  bep20: 'BEP-20',
+  trc20: 'TRC-20',
+};
+
+// Tron addresses start with T (base58); every other network is EVM (0x + 40 hex).
+const ADDRESS_FORMAT = {
+  tron: /^T[1-9A-HJ-NP-Za-km-z]{33}$/,
+  evm: /^0x[0-9a-fA-F]{40}$/,
+};
+
 export const NETWORK_BY_COIN: Record<Stablecoin, string> = {
   [CurrencyCode.USDC]: 'polygon',
   [CurrencyCode.USDT]: 'trc20',
@@ -185,6 +205,7 @@ export class CryptoService {
     currency: Stablecoin,
     amount: string,
     address?: string,
+    network?: string,
   ): Promise<WithdrawalQuote> {
     const customer = await this.customerOrFail(userId);
     return this.quote(
@@ -192,6 +213,7 @@ export class CryptoService {
       currency,
       amount,
       address,
+      network,
     );
   }
 
@@ -217,6 +239,7 @@ export class CryptoService {
       dto.currency,
       dto.amount,
       address,
+      dto.network,
     );
 
     // Naira value for the new-device cap, which is set in naira. Only fetched
@@ -375,12 +398,25 @@ export class CryptoService {
     currency: Stablecoin,
     amountRaw: string,
     address?: string,
+    chosenNetwork?: string,
   ): Promise<WithdrawalQuote> {
     const amount = new Decimal(amountRaw);
     if (!amount.isPositive()) {
       throw new BadRequestException('Enter an amount greater than zero.');
     }
-    const network = NETWORK_BY_COIN[currency];
+    const network = chosenNetwork ?? NETWORK_BY_COIN[currency];
+    if (!PAYOUT_NETWORKS[currency].includes(network)) {
+      throw new BadRequestException(`${currency} can't be sent on ${network}.`);
+    }
+    // StableStack's check is per coin only, so a Tron address would pass for
+    // an ERC-20 payout; the format check ties the address to the network.
+    const format =
+      network === 'trc20' ? ADDRESS_FORMAT.tron : ADDRESS_FORMAT.evm;
+    if (address && !format.test(address)) {
+      throw new BadRequestException(
+        `That address isn't on ${NETWORK_LABEL[network] ?? network}. Check the network.`,
+      );
+    }
     if (address && !(await this.client.isValidAddress(currency, address))) {
       throw new BadRequestException(
         `That isn't a valid ${currency} address on ${network}.`,
