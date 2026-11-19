@@ -255,7 +255,7 @@ const send = {
   pin: '1234',
   currency: CurrencyCode.USDC as const,
   amount: '100',
-  address: '0xDeF4567890abcdef4567',
+  address: '0xDeF4567890abcdef4567890abcdef4567890abcd',
 };
 
 describe('CryptoService withdrawals', () => {
@@ -275,6 +275,57 @@ describe('CryptoService withdrawals', () => {
     });
   });
 
+  it('quotes on the network the customer picked', async () => {
+    const { service, client } = setup('TIER_3', ssCustomer);
+    const q = await service.quoteWithdrawal(
+      'u-1',
+      CurrencyCode.USDT,
+      '100',
+      '0xDeF4567890abcdef4567890abcdef4567890abcd',
+      'bep20',
+    );
+    expect(q.network).toBe('bep20');
+    expect(client.withdrawalFees).toHaveBeenCalledWith(
+      expect.objectContaining({ network: 'bep20' }),
+    );
+  });
+
+  it("refuses a network the coin doesn't support", async () => {
+    const { service } = setup('TIER_3', ssCustomer);
+    await expect(
+      service.quoteWithdrawal(
+        'u-1',
+        CurrencyCode.USDC,
+        '100',
+        undefined,
+        'trc20',
+      ),
+    ).rejects.toThrow("USDC can't be sent on trc20");
+  });
+
+  it('refuses an address from another network', async () => {
+    const { service, client } = setup('TIER_3', ssCustomer);
+    await expect(
+      service.quoteWithdrawal(
+        'u-1',
+        CurrencyCode.USDT,
+        '100',
+        'TQn9Y2khEsLJW1ChVWFMSMeRDow5Kcbk8h',
+        'erc20',
+      ),
+    ).rejects.toThrow("That address isn't on ERC-20");
+    await expect(
+      service.quoteWithdrawal(
+        'u-1',
+        CurrencyCode.USDT,
+        '100',
+        'TQn9Y2khEsLJW1ChVWFMSMeRDow5Kcbk8h',
+        'trc20',
+      ),
+    ).resolves.toMatchObject({ network: 'trc20' });
+    expect(client.isValidAddress).toHaveBeenCalledTimes(1);
+  });
+
   it('refuses an amount the fees would swallow', async () => {
     const { service } = setup('TIER_3', ssCustomer);
     await expect(
@@ -291,7 +342,7 @@ describe('CryptoService withdrawals', () => {
     expect(saved[0]).toMatchObject({
       status: 'PROCESSING',
       kind: 'PAYOUT',
-      accountNumber: '0xdef4567890abcdef4567',
+      accountNumber: '0xdef4567890abcdef4567890abcdef4567890abcd',
       amount: '97.80000000',
       fee: '2.20000000',
     });
