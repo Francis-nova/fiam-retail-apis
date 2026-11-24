@@ -90,8 +90,12 @@ function toResponse(transaction: Transaction): TransactionResponse {
     transaction.type === TransactionType.DEBIT &&
     transaction.provider === PaymentProviderKey.STABLESTACK
   ) {
-    // Crypto send: the destination address; the network sits in narration.
+    // Crypto send: the destination address and the network it went out on.
     counterpartyAccountNumber = transaction.accountNumber;
+    const quote = transaction.rawPayload?.quote as
+      { network?: unknown } | undefined;
+    counterpartyBankName =
+      typeof quote?.network === 'string' ? quote.network : null;
   } else if (transaction.type === TransactionType.DEBIT) {
     counterpartyName = transaction.beneficiary?.accountName ?? null;
     counterpartyAccountNumber = transaction.beneficiary?.accountNumber ?? null;
