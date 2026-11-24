@@ -10,7 +10,7 @@ import { ConfigService } from '@nestjs/config';
 import { InjectQueue } from '@nestjs/bullmq';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Queue } from 'bullmq';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, In, Repository } from 'typeorm';
 import Decimal from 'decimal.js';
 import {
   CurrencyCode,
@@ -30,6 +30,7 @@ import {
 import { StableStackCustomer } from './entities/stablestack-customer.entity';
 import { CreateCryptoWalletDto } from './dto/create-crypto-wallet.dto';
 import { CreateCryptoWithdrawalDto } from './dto/crypto-withdrawal.dto';
+import { CreateConversionDto } from './dto/crypto-conversion.dto';
 import {
   Transaction,
   TransactionKind,
@@ -75,6 +76,9 @@ export const NETWORK_BY_COIN: Record<Stablecoin, string> = {
 
 const AUTH_TIMEOUT_MS = 5_000;
 
+// Smallest stablecoin amount a customer can convert to naira.
+export const MIN_CONVERSION = new Decimal(10);
+
 // EVM addresses are case-insensitive (mixed case is only a checksum), so they
 // are stored and matched in lower case. Tron addresses are case-sensitive.
 export function normaliseAddress(address: string): string {
@@ -102,6 +106,14 @@ export interface WithdrawalQuote {
   fiamFee: string;
   totalFee: string;
   recipientReceives: string;
+}
+
+// Selling `amount` of the coin at Fiam's rate credits `ngnAmount` naira.
+export interface ConversionQuote {
+  currency: Stablecoin;
+  amount: string;
+  rate: string;
+  ngnAmount: string;
 }
 
 interface AuthUser {
@@ -191,13 +203,107 @@ export class CryptoService {
   // NGN per 1 USD stablecoin as Fiam quotes it: StableStack's rate less our
   // markup. Used to show balances in naira.
   async ngnRate(): Promise<{ ngnPerUsd: string }> {
-    const rate = await this.client.ngnRate();
+    return {
+      ngnPerUsd: (await this.customerRate(CurrencyCode.USDC)).toFixed(2),
+    };
+  }
+
+  private async customerRate(currency: Stablecoin): Promise<Decimal> {
+    const rate = await this.client.ngnRate(currency);
     const markup = new Decimal(
       this.configService.get('stablestack.ngnMarkupPercent', { infer: true }),
     );
+    return rate
+      .times(new Decimal(100).minus(markup))
+      .div(100)
+      .toDecimalPlaces(2);
+  }
+
+  // What the customer gets in naira. StableStack's own fee on the sale comes
+  // out of our markup, not the customer's amount.
+  async quoteConversion(
+    currency: Stablecoin,
+    amountRaw: string,
+  ): Promise<ConversionQuote> {
+    const amount = new Decimal(amountRaw);
+    if (amount.lessThan(MIN_CONVERSION)) {
+      throw new BadRequestException(
+        `The minimum is ${MIN_CONVERSION.toString()} ${currency}.`,
+      );
+    }
+    const rate = await this.customerRate(currency);
     return {
-      ngnPerUsd: rate.times(new Decimal(100).minus(markup)).div(100).toFixed(2),
+      currency,
+      amount: amount.toFixed(8),
+      rate: rate.toFixed(2),
+      ngnAmount: amount
+        .times(rate)
+        .toDecimalPlaces(2, Decimal.ROUND_DOWN)
+        .toFixed(2),
     };
+  }
+
+  // Sell coin for naira: StableStack pays the naira into Fiam's pool account
+  // and, once it reports success, we credit the customer's naira wallet.
+  async convert(
+    userId: string,
+    dto: CreateConversionDto,
+  ): Promise<Transaction> {
+    const pool = this.configService.get('stablestack.ngnPool', { infer: true });
+    if (!pool.accountNumber) {
+      throw new ServiceUnavailableException(
+        'Converting to naira is not available yet.',
+      );
+    }
+    await this.pinVerifier.assertValid(userId, dto.pin);
+    const customer = await this.customerOrFail(userId);
+    const [wallet, ngnWallet] = await Promise.all([
+      this.walletsService.findByUserAndCurrency(userId, dto.currency),
+      this.walletsService.findByUserAndCurrency(userId, CurrencyCode.NGN),
+    ]);
+    if (!wallet) throw new BadRequestException('Create this wallet first.');
+    if (!ngnWallet) {
+      throw new BadRequestException('You need a naira account to convert.');
+    }
+    const q = await this.quoteConversion(dto.currency, dto.amount);
+
+    const transaction = await this.dataSource.transaction(async (manager) => {
+      const debited = await this.walletsService.debitForUpdate(
+        manager,
+        wallet.id,
+        new Decimal(q.amount),
+      );
+      return manager.save(
+        Transaction,
+        manager.create(Transaction, {
+          walletId: wallet.id,
+          currency: dto.currency,
+          type: TransactionType.DEBIT,
+          kind: TransactionKind.CONVERSION,
+          status: TransactionStatus.PROCESSING,
+          provider: PaymentProviderKey.STABLESTACK,
+          accountNumber: pool.accountNumber,
+          amount: q.amount,
+          balanceAfter: debited.balance,
+          reference: `FCC${randomUUID().replace(/-/g, '')}`,
+          narration: `${dto.currency} to naira`,
+          rawPayload: { conversion: { ...q, ngnWalletId: ngnWallet.id } },
+        }),
+      );
+    });
+
+    return this.submit(transaction, () =>
+      this.client.createBankPayout({
+        customerId: customer.stablestackCustomerId,
+        currency: dto.currency,
+        amount: new Decimal(q.amount),
+        accountNumber: pool.accountNumber,
+        bankCode: pool.bankCode,
+        bankName: pool.bankName,
+        accountName: pool.accountName,
+        narration: transaction.reference,
+      }),
+    );
   }
 
   async quoteWithdrawal(
@@ -295,16 +401,27 @@ export class CryptoService {
       );
     });
 
-    let created: StableStackTransaction;
-    try {
-      created = await this.client.createWithdrawal({
+    return this.submit(transaction, () =>
+      this.client.createWithdrawal({
         customerId: customer.stablestackCustomerId,
         currency: dto.currency,
         network: q.network,
         address,
         amount: new Decimal(q.amount),
         narration: transaction.reference,
-      });
+      }),
+    );
+  }
+
+  // Sends a held debit (send or conversion) to StableStack, then settles it
+  // the same way: webhook or status job, refund on failure.
+  private async submit(
+    transaction: Transaction,
+    send: () => Promise<StableStackTransaction>,
+  ): Promise<Transaction> {
+    let created: StableStackTransaction;
+    try {
+      created = await send();
     } catch (err) {
       // A 4xx means StableStack refused it: nothing left the wallet.
       if (err instanceof BadRequestException) {
@@ -313,7 +430,7 @@ export class CryptoService {
       }
       // Timeout or 5xx: it may have been sent, so hold the funds for a person.
       reportIssueToSlack(
-        'Crypto withdrawal outcome unknown — check StableStack',
+        'StableStack payout outcome unknown — check StableStack',
         {
           reference: transaction.reference,
           transactionId: transaction.id,
@@ -325,7 +442,8 @@ export class CryptoService {
     await this.transactions.update(transaction.id, {
       reference: created.transaction_id,
       providerStatusCode: created.status,
-      rawPayload: { quote: q, created },
+      // Keeps the quote (and its ngnValue, which the new-device cap sums).
+      rawPayload: { ...transaction.rawPayload, created },
     });
     await this.statusQueue.add(
       'sync',
@@ -370,6 +488,10 @@ export class CryptoService {
     });
     if (transaction?.status !== TransactionStatus.PROCESSING)
       return 'SUCCESSFUL';
+    if (transaction.kind === TransactionKind.CONVERSION) {
+      await this.settleConversion(transaction, status);
+      return 'SUCCESSFUL';
+    }
     // The on-chain hash goes in rawPayload, not externalId: a send to another
     // Fiam wallet shares the hash with that deposit, and externalId is unique.
     const result = await this.transactions.update(
@@ -391,6 +513,54 @@ export class CryptoService {
       );
     }
     return 'SUCCESSFUL';
+  }
+
+  // Marks the coin debit done and credits the naira in one DB transaction,
+  // so a webhook and the status job racing can't credit twice.
+  private async settleConversion(
+    transaction: Transaction,
+    status: string,
+  ): Promise<void> {
+    const { ngnAmount, ngnWalletId } = transaction.rawPayload?.conversion as {
+      ngnAmount: string;
+      ngnWalletId: string;
+    };
+    const credit = await this.dataSource.transaction(async (manager) => {
+      const moved = await manager.update(
+        Transaction,
+        { id: transaction.id, status: TransactionStatus.PROCESSING },
+        {
+          status: TransactionStatus.SUCCESSFUL,
+          providerStatusCode: status,
+          verifiedAt: new Date(),
+        },
+      );
+      if (!moved.affected) return null;
+      const ngn = await this.walletsService.creditForUpdate(
+        manager,
+        ngnWalletId,
+        new Decimal(ngnAmount),
+      );
+      return manager.save(
+        Transaction,
+        manager.create(Transaction, {
+          walletId: ngnWalletId,
+          currency: CurrencyCode.NGN,
+          type: TransactionType.CREDIT,
+          kind: TransactionKind.CONVERSION,
+          status: TransactionStatus.SUCCESSFUL,
+          provider: PaymentProviderKey.STABLESTACK,
+          amount: ngnAmount,
+          balanceAfter: ngn.balance,
+          reference: `${transaction.reference}-NGN`,
+          narration: `${transaction.currency} converted to naira`,
+          verifiedAt: new Date(),
+          rawPayload: { conversionOf: transaction.id },
+        }),
+      );
+    });
+    if (credit)
+      void this.notifications.notifyTransaction(credit, 'CREDIT_RECEIVED');
   }
 
   private async quote(
@@ -478,7 +648,7 @@ export class CryptoService {
     ) {
       const withdrawal = await this.transactions.findOneBy({
         provider: PaymentProviderKey.STABLESTACK,
-        kind: TransactionKind.PAYOUT,
+        kind: In([TransactionKind.PAYOUT, TransactionKind.CONVERSION]),
         reference: text(data.transaction_id),
       });
       // Can beat our own save of their transaction_id; the status job catches it.

@@ -4,6 +4,7 @@ import { TransactionsService } from './transactions.service';
 import { PaymentProviderKey } from '../wallets/entities/address.entity';
 import {
   Transaction,
+  TransactionKind,
   TransactionStatus,
   TransactionType,
 } from './entities/transaction.entity';
@@ -86,6 +87,8 @@ function toResponse(transaction: Transaction): TransactionResponse {
   if (transaction.bill) {
     counterpartyName = transaction.bill.billerName;
     counterpartyAccountNumber = transaction.bill.customerId;
+  } else if (transaction.kind === TransactionKind.CONVERSION) {
+    // Both legs are the customer's own wallets: no counterparty.
   } else if (
     transaction.type === TransactionType.DEBIT &&
     transaction.provider === PaymentProviderKey.STABLESTACK

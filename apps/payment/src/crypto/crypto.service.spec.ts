@@ -21,7 +21,14 @@ function setup(tier = 'TIER_3', existingCustomer: unknown = null) {
         ? { internalUrl: 'http://auth', internalApiKey: 'k' }
         : key === 'stablestack.ngnMarkupPercent'
           ? '1'
-          : undefined,
+          : key === 'stablestack.ngnPool'
+            ? {
+                accountNumber: '1035401629',
+                bankCode: '090110',
+                bankName: 'VFD Microfinance Bank',
+                accountName: 'Fiam Pool',
+              }
+            : undefined,
   };
   const client = {
     createCustomer: jest.fn().mockResolvedValue('cus-1'),
@@ -41,12 +48,16 @@ function setup(tier = 'TIER_3', existingCustomer: unknown = null) {
       .fn()
       .mockResolvedValue({ transaction_id: 'TXOUT', status: 'PENDING' }),
     getTransaction: jest.fn(),
+    createBankPayout: jest
+      .fn()
+      .mockResolvedValue({ transaction_id: 'TXBANK', status: 'PENDING' }),
   };
   const wallet = { id: 'w-1', balance: '0.00000000' };
   const walletsService = {
     getOrCreateWallet: jest.fn().mockResolvedValue(wallet),
     findByUserAndCurrency: jest.fn().mockResolvedValue(wallet),
     debitForUpdate: jest.fn().mockResolvedValue({ balance: '0.00000000' }),
+    creditForUpdate: jest.fn().mockResolvedValue({ balance: '15345.00000000' }),
   };
   let active: unknown = null;
   const addressService = {
@@ -79,6 +90,7 @@ function setup(tier = 'TIER_3', existingCustomer: unknown = null) {
       saved.push(v);
       return Promise.resolve({ id: 't-1', ...v });
     },
+    update: jest.fn().mockResolvedValue({ affected: 1 }),
   };
   const dataSource = {
     createQueryRunner: () => runner,
@@ -147,6 +159,9 @@ function setup(tier = 'TIER_3', existingCustomer: unknown = null) {
     payoutsService,
     pinVerifier,
     statusQueue,
+    walletsService,
+    manager,
+    notifications,
   };
 }
 
@@ -357,6 +372,22 @@ describe('CryptoService withdrawals', () => {
     expect(statusQueue.add).toHaveBeenCalled();
   });
 
+  it('keeps the quote (with ngnValue for the cap) after swapping in their id', async () => {
+    const { service, transactions, pinVerifier } = setup('TIER_3', ssCustomer);
+    pinVerifier.assertValid.mockResolvedValue({
+      transferLimit: { amount: '20000.00', since: 'x', until: 'y' },
+    });
+    await service.withdraw('u-1', send);
+    const [[, patch]] = transactions.update.mock.calls as [
+      [
+        string,
+        { rawPayload: { quote: { ngnValue: string }; created: unknown } },
+      ],
+    ];
+    expect(patch.rawPayload.quote.ngnValue).toBe('153450.00');
+    expect(patch.rawPayload.created).toBeDefined();
+  });
+
   it('checks the new-device cap in naira while it applies', async () => {
     const { service, payoutsService, pinVerifier, saved } = setup(
       'TIER_3',
@@ -435,5 +466,132 @@ describe('StableStackClient.withdrawalFees', () => {
     expect(fees.platform.toString()).toBe('0.246913');
     expect(fees.network.toString()).toBe('1');
     expect(fees.fiam.toString()).toBe('1');
+  });
+});
+
+describe('CryptoService conversions', () => {
+  const ssCustomer = { userId: 'u-1', stablestackCustomerId: 'cus-1' };
+  const sell = { pin: '1234', currency: CurrencyCode.USDT, amount: '10' } as {
+    pin: string;
+    currency: CurrencyCode.USDT;
+    amount: string;
+  };
+
+  it('quotes naira at our rate for that coin', async () => {
+    const { service, client } = setup();
+    await expect(
+      service.quoteConversion(CurrencyCode.USDT, '10.5'),
+    ).resolves.toEqual({
+      currency: 'USDT',
+      amount: '10.50000000',
+      rate: '1534.50',
+      ngnAmount: '16112.25',
+    });
+    expect(client.ngnRate).toHaveBeenCalledWith('USDT');
+  });
+
+  it('refuses less than the minimum', async () => {
+    const { service } = setup();
+    await expect(
+      service.quoteConversion(CurrencyCode.USDC, '9.99'),
+    ).rejects.toThrow('The minimum is 10 USDC.');
+  });
+
+  it('holds the coin and asks StableStack to pay naira into the pool', async () => {
+    const { service, client, saved, pinVerifier, transactions } = setup(
+      'TIER_3',
+      ssCustomer,
+    );
+    await service.convert('u-1', sell);
+    expect(pinVerifier.assertValid).toHaveBeenCalledWith('u-1', '1234');
+    expect(saved[0]).toMatchObject({
+      kind: 'CONVERSION',
+      type: 'DEBIT',
+      status: 'PROCESSING',
+      amount: '10.00000000',
+      accountNumber: '1035401629',
+      rawPayload: { conversion: { ngnAmount: '15345.00', ngnWalletId: 'w-1' } },
+    });
+    expect(client.createBankPayout).toHaveBeenCalledWith(
+      expect.objectContaining({
+        customerId: 'cus-1',
+        currency: 'USDT',
+        accountNumber: '1035401629',
+        bankCode: '090110',
+      }),
+    );
+    expect(transactions.update).toHaveBeenCalledWith(
+      't-1',
+      expect.objectContaining({ reference: 'TXBANK' }),
+    );
+  });
+
+  it('credits the naira wallet once when StableStack completes it', async () => {
+    const {
+      service,
+      transactions,
+      walletsService,
+      manager,
+      saved,
+      notifications,
+    } = setup();
+    const conversion = {
+      id: 't-9',
+      kind: 'CONVERSION',
+      currency: 'USDT',
+      reference: 'TXBANK',
+      status: 'PROCESSING',
+      rawPayload: {
+        conversion: { ngnAmount: '15345.00', ngnWalletId: 'w-ngn' },
+      },
+    };
+    transactions.findOneBy.mockResolvedValue(conversion);
+    const completed = {
+      id: 'evt_9',
+      event_type: 'payout.completed',
+      data: { transaction_id: 'TXBANK' },
+    };
+
+    await service.handleWebhook(completed);
+    expect(manager.update).toHaveBeenCalledWith(
+      expect.anything(),
+      { id: 't-9', status: 'PROCESSING' },
+      expect.objectContaining({ status: 'SUCCESSFUL' }),
+    );
+    const [[, walletId, amount]] = walletsService.creditForUpdate.mock
+      .calls as [[unknown, string, Decimal]];
+    expect([walletId, amount.toString()]).toEqual(['w-ngn', '15345']);
+    expect(saved.at(-1)).toMatchObject({
+      walletId: 'w-ngn',
+      currency: 'NGN',
+      type: 'CREDIT',
+      kind: 'CONVERSION',
+      amount: '15345.00',
+      reference: 'TXBANK-NGN',
+    });
+    expect(notifications.notifyTransaction).toHaveBeenCalledWith(
+      expect.objectContaining({ walletId: 'w-ngn' }),
+      'CREDIT_RECEIVED',
+    );
+
+    // A second report (status job or repeat webhook) moves nothing.
+    manager.update.mockResolvedValue({ affected: 0 });
+    await service.handleWebhook(completed);
+    expect(walletsService.creditForUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  it('refunds the coin when the naira payout fails', async () => {
+    const { service, transactions, payoutsService } = setup();
+    transactions.findOneBy.mockResolvedValue({
+      id: 't-9',
+      kind: 'CONVERSION',
+      status: 'PROCESSING',
+    });
+    await service.handleWebhook({
+      id: 'evt_10',
+      event_type: 'payout.failed',
+      data: { transaction_id: 'TXBANK' },
+    });
+    expect(payoutsService.reverseFailedPayout).toHaveBeenCalledWith('t-9');
   });
 });
