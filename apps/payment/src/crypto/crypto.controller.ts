@@ -28,6 +28,10 @@ import {
   CreateCryptoWithdrawalDto,
   QuoteCryptoWithdrawalDto,
 } from './dto/crypto-withdrawal.dto';
+import {
+  CreateConversionDto,
+  QuoteConversionDto,
+} from './dto/crypto-conversion.dto';
 import { isValidStableStackSignature } from './stablestack-signature';
 
 @Controller('crypto')
@@ -77,6 +81,24 @@ export class CryptoController {
     @Body() dto: CreateCryptoWithdrawalDto,
   ) {
     return this.cryptoService.withdraw(user.userId, dto);
+  }
+
+  // Naira the customer gets for selling a coin amount, at Fiam's rate.
+  @Get('conversions/quote')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  quoteConversion(@Query() q: QuoteConversionDto) {
+    return this.cryptoService.quoteConversion(q.currency, q.amount);
+  }
+
+  @Post('conversions')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  convert(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: CreateConversionDto,
+  ) {
+    return this.cryptoService.convert(user.userId, dto);
   }
 }
 

@@ -48,6 +48,14 @@ export interface PaymentConfig {
     // Fiam's markup on StableStack's NGN rate, in percent ("1" = 1%). The
     // rate customers see is StableStack's rate less this.
     ngnMarkupPercent: string;
+    // Fiam's VFD pool account: StableStack pays converted naira here and we
+    // credit the customer's naira wallet. Blank accountNumber = convert is off.
+    ngnPool: {
+      accountNumber: string;
+      bankCode: string;
+      bankName: string;
+      accountName: string;
+    };
   };
   // One Slack incoming webhook per channel; blank = that feed is off.
   slack: {
@@ -118,6 +126,12 @@ export default (): PaymentConfig => ({
     apiKey: process.env.STABLESTACK_API_KEY ?? '',
     webhookSecret: process.env.STABLESTACK_WEBHOOK_SECRET ?? '',
     ngnMarkupPercent: process.env.CRYPTO_NGN_MARKUP_PERCENT?.trim() || '1',
+    ngnPool: {
+      accountNumber: process.env.CRYPTO_NGN_POOL_ACCOUNT_NUMBER?.trim() ?? '',
+      bankCode: process.env.CRYPTO_NGN_POOL_BANK_CODE?.trim() ?? '',
+      bankName: process.env.CRYPTO_NGN_POOL_BANK_NAME?.trim() ?? '',
+      accountName: process.env.CRYPTO_NGN_POOL_ACCOUNT_NAME?.trim() ?? '',
+    },
   },
   slack: {
     paymentsWebhookUrl: process.env.SLACK_WEBHOOK_PAYMENTS ?? '',

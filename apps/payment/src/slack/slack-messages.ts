@@ -59,6 +59,8 @@ function title(tx: AlertableTransaction): string {
       return `Manual adjustment (${tx.type === TransactionType.CREDIT ? 'credit' : 'debit'})`;
     case TransactionKind.REVERSAL:
       return 'Refund';
+    case TransactionKind.CONVERSION:
+      return 'Stablecoin to naira';
     default:
       return tx.type === TransactionType.CREDIT ? 'Credit' : 'Debit';
   }

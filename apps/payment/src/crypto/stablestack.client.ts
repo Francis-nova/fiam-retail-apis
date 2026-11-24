@@ -34,9 +34,9 @@ export interface StableStackTransaction {
 @Injectable()
 export class StableStackClient {
   private readonly logger = new Logger(StableStackClient.name);
-  // shortcut: per-process cache of the NGN rate; move to Redis if several
+  // shortcut: per-process cache of the NGN rates; move to Redis if several
   // payment replicas start hammering StableStack's 60 req/min limit.
-  private rate: { value: Decimal; at: number } | null = null;
+  private readonly rates = new Map<string, { value: Decimal; at: number }>();
 
   constructor(
     private readonly configService: ConfigService<PaymentConfig, true>,
@@ -152,25 +152,50 @@ export class StableStackClient {
     );
   }
 
-  // StableStack's NGN per 1 USDC. USDT uses the same rate: both are 1:1 with USD.
-  async ngnRate(): Promise<Decimal> {
-    if (this.rate && Date.now() - this.rate.at < RATE_TTL_MS) {
-      return this.rate.value;
-    }
+  // StableStack's NGN per 1 coin (usdcngn / usdtngn pairs).
+  async ngnRate(currency = 'USDC'): Promise<Decimal> {
+    const pair = `${currency.toLowerCase()}ngn`;
+    const cached = this.rates.get(pair);
+    if (cached && Date.now() - cached.at < RATE_TTL_MS) return cached.value;
     const data = await this.request<{
       fees?: { market_pair?: string; exchange_rate?: string }[];
     }>(
       'GET',
-      '/payouts/fees?amount=100&currency_type=FIAT&from_currency=usdc&to_currency=ngn&market_pair=usdcngn',
+      `/payouts/fees?amount=100&currency_type=FIAT&from_currency=${currency.toLowerCase()}&to_currency=ngn&market_pair=${pair}`,
     );
-    const raw = data.fees?.find(
-      (f) => f.market_pair === 'usdcngn',
-    )?.exchange_rate;
+    const raw = data.fees?.find((f) => f.market_pair === pair)?.exchange_rate;
     if (!raw || !new Decimal(raw).isPositive()) {
       throw new ServiceUnavailableException('Rate is unavailable right now');
     }
-    this.rate = { value: new Decimal(raw), at: Date.now() };
-    return this.rate.value;
+    const value = new Decimal(raw);
+    this.rates.set(pair, { value, at: Date.now() });
+    return value;
+  }
+
+  // Sells the customer's coin for naira paid into a Nigerian bank account.
+  async createBankPayout(input: {
+    customerId: string;
+    currency: string;
+    amount: Decimal;
+    accountNumber: string;
+    bankCode: string;
+    bankName: string;
+    accountName: string;
+    narration: string;
+  }): Promise<StableStackTransaction> {
+    return this.request<StableStackTransaction>('POST', '/payouts/banks', {
+      customer_id: input.customerId,
+      currency: input.currency,
+      amount: input.amount.toString(),
+      account_number: input.accountNumber,
+      bank_code: input.bankCode,
+      bank_name: input.bankName,
+      recipient_name: input.accountName,
+      recipient_currency: 'NGN',
+      recipient_country: 'Nigeria',
+      payment_purpose: 'PERSONAL_TRANSFERS',
+      narration: input.narration,
+    });
   }
 
   private async request<T>(

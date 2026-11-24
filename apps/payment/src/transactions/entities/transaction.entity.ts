@@ -26,6 +26,9 @@ export enum TransactionKind {
   BILL_PAYMENT = 'BILL_PAYMENT',
   REVERSAL = 'REVERSAL',
   ADJUSTMENT = 'ADJUSTMENT',
+  // Stablecoin sold for naira: a coin DEBIT and, once StableStack pays out,
+  // a naira CREDIT, both on the customer's own wallets.
+  CONVERSION = 'CONVERSION',
 }
 
 // For a BILL_PAYMENT: which kind of bill (normalised from the provider's
