@@ -6,6 +6,7 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
+import type { HomeAddress } from '../../kyc/dto/home-address.dto';
 
 export enum UserStatus {
   PENDING_VERIFICATION = 'PENDING_VERIFICATION',
@@ -81,6 +82,11 @@ export class User {
 
   @Column({ name: 'nin_verified_at', type: 'timestamptz', nullable: true })
   ninVerifiedAt: Date | null;
+
+  // Entered with the proof of address (Tier 3); StableStack needs it to pay
+  // naira out.
+  @Column({ name: 'home_address', type: 'jsonb', nullable: true })
+  homeAddress: HomeAddress | null;
 
   @Column({ name: 'password_hash' })
   passwordHash: string;

@@ -8,6 +8,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { AuthConfig } from '../config/configuration';
+import type { HomeAddress } from '../kyc/dto/home-address.dto';
 import { Repository } from 'typeorm';
 import {
   CustomerTier,
@@ -116,6 +117,10 @@ export class UsersService {
   // already confirmed a name match.
   async setNinVerified(id: string, nin: string): Promise<void> {
     await this.usersRepo.update(id, { nin, ninVerifiedAt: new Date() });
+  }
+
+  async setHomeAddress(id: string, homeAddress: HomeAddress): Promise<void> {
+    await this.usersRepo.update(id, { homeAddress });
   }
 
   // Atomic conditional claim — not read-then-write — so the two independent

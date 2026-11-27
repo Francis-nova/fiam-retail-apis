@@ -53,6 +53,18 @@ export class InternalController {
     };
   }
 
+  // Payment sends this to StableStack, which needs a full customer profile
+  // before it pays out naira.
+  @Get('users/:id/profile')
+  async profile(@Param('id', new ParseUUIDPipe()) id: string) {
+    const user = await this.usersService.findById(id);
+    return {
+      dateOfBirth: user.dateOfBirth,
+      phone: user.phone,
+      homeAddress: user.homeAddress,
+    };
+  }
+
   // Called by payment from inside POST /payouts: the transaction PIN is
   // checked as part of the money movement itself, so a stolen access token
   // can't skip it by calling the payout endpoint directly. Shares the

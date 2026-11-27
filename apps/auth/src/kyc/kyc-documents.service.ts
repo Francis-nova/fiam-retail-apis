@@ -17,6 +17,7 @@ import { UsersService } from '../users/users.service';
 import { SlackNotifier } from '../messaging/slack-notifier.service';
 import { CustomerTier, TierUpgradeStatus } from '../users/entities/user.entity';
 import { OcrService } from './ocr.service';
+import type { HomeAddress } from './dto/home-address.dto';
 import { NIN_PROVIDER } from './nin-provider.interface';
 import type { NinProvider } from './nin-provider.interface';
 import { QoreIdSessionService } from './qoreid-session.service';
@@ -230,6 +231,14 @@ export class KycDocumentsService {
     return { matched: true, verifiedAt: new Date() };
   }
 
+  async homeAddress(userId: string): Promise<HomeAddress | null> {
+    return (await this.usersService.findById(userId)).homeAddress;
+  }
+
+  saveHomeAddress(userId: string, homeAddress: HomeAddress): Promise<void> {
+    return this.usersService.setHomeAddress(userId, homeAddress);
+  }
+
   async submitTierUpgrade(userId: string) {
     const [docs, user] = await Promise.all([
       this.docsRepo.find({ where: { userId } }),
@@ -252,6 +261,9 @@ export class KycDocumentsService {
     }
     if (!user.ninVerifiedAt) {
       throw new BadRequestException('NIN has not been verified yet');
+    }
+    if (!user.homeAddress) {
+      throw new BadRequestException('Add your home address');
     }
 
     await this.usersService.setTierUpgradeStatus(
@@ -277,6 +289,7 @@ export class KycDocumentsService {
           : null,
       requiredDocTypes: REQUIRED_DOC_TYPES,
       ninVerified: Boolean(user.ninVerifiedAt),
+      addressAdded: Boolean(user.homeAddress),
     };
   }
 
