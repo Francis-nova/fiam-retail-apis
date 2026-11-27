@@ -4,6 +4,7 @@ import {
   Controller,
   Get,
   Post,
+  Put,
   Res,
   UploadedFile,
   UseGuards,
@@ -15,6 +16,7 @@ import { ApiBearerAuth } from '@nestjs/swagger';
 import { KycDocumentsService } from './kyc-documents.service';
 import { UploadKycDocumentDto } from './dto/upload-kyc-document.dto';
 import { VerifyNinDto } from './dto/verify-nin.dto';
+import { HomeAddressDto } from './dto/home-address.dto';
 import { JwtAuthGuard } from '../tokens/jwt-auth.guard';
 import { CurrentUser } from '../tokens/current-user.decorator';
 import type { AuthenticatedUser } from '../tokens/current-user.decorator';
@@ -126,6 +128,31 @@ export class KycController {
       dto.nin,
       dto.sessionId,
     );
+  }
+
+  @Get('address')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  async homeAddress(@CurrentUser() user: AuthenticatedUser) {
+    return {
+      homeAddress: await this.kycDocumentsService.homeAddress(user.userId),
+    };
+  }
+
+  @Put('address')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  async saveHomeAddress(
+    @Body() dto: HomeAddressDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    const { address, lga, state } = dto;
+    await this.kycDocumentsService.saveHomeAddress(user.userId, {
+      address,
+      lga,
+      state,
+    });
+    return { homeAddress: { address, lga, state } };
   }
 
   @Post('tier-upgrade/submit')

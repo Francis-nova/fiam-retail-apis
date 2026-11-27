@@ -14,7 +14,15 @@ const compliance = {
   acceptedRiskDisclosure: true,
 } as const;
 
-function setup(tier = 'TIER_3', existingCustomer: unknown = null) {
+function setup(
+  tier = 'TIER_3',
+  existingCustomer: unknown = null,
+  homeAddress: unknown = {
+    address: '12 Allen Avenue',
+    lga: 'Ikeja',
+    state: 'Lagos',
+  },
+) {
   const config = {
     get: (key: string) =>
       key === 'auth'
@@ -51,6 +59,7 @@ function setup(tier = 'TIER_3', existingCustomer: unknown = null) {
     createBankPayout: jest
       .fn()
       .mockResolvedValue({ transaction_id: 'TXBANK', status: 'PENDING' }),
+    updateCustomer: jest.fn().mockResolvedValue(undefined),
   };
   const wallet = { id: 'w-1', balance: '0.00000000' };
   const walletsService = {
@@ -131,6 +140,9 @@ function setup(tier = 'TIER_3', existingCustomer: unknown = null) {
         firstName: 'Ada',
         lastName: 'Okafor',
         tier,
+        dateOfBirth: '1990-05-01',
+        phone: '2348012345678',
+        homeAddress,
       }),
   }) as never;
 
@@ -470,7 +482,11 @@ describe('StableStackClient.withdrawalFees', () => {
 });
 
 describe('CryptoService conversions', () => {
-  const ssCustomer = { userId: 'u-1', stablestackCustomerId: 'cus-1' };
+  const ssCustomer = {
+    userId: 'u-1',
+    stablestackCustomerId: 'cus-1',
+    compliance,
+  };
   const sell = { pin: '1234', currency: CurrencyCode.USDT, amount: '10' } as {
     pin: string;
     currency: CurrencyCode.USDT;
@@ -524,6 +540,35 @@ describe('CryptoService conversions', () => {
       't-1',
       expect.objectContaining({ reference: 'TXBANK' }),
     );
+  });
+
+  it('sends StableStack the full customer profile first', async () => {
+    const { service, client } = setup('TIER_3', ssCustomer);
+    await service.convert('u-1', sell);
+    expect(client.updateCustomer).toHaveBeenCalledWith('cus-1', {
+      birth_date: '1990-05-01',
+      phone: '+2348012345678',
+      account_purpose: 'PROTECT_WEALTH',
+      source_of_funds: 'SALARY',
+      employment_status: 'EMPLOYED',
+      most_recent_occupation: '151251',
+      expected_monthly_income: 1_000_000,
+      address: {
+        line_1: '12 Allen Avenue',
+        city: 'Ikeja',
+        state: 'Lagos',
+        country: 'NG',
+      },
+    });
+  });
+
+  it('refuses before moving money when there is no address', async () => {
+    const { service, client, saved } = setup('TIER_3', ssCustomer, null);
+    await expect(service.convert('u-1', sell)).rejects.toThrow(
+      'Add your home address to convert.',
+    );
+    expect(saved).toHaveLength(0);
+    expect(client.createBankPayout).not.toHaveBeenCalled();
   });
 
   it('credits the naira wallet once when StableStack completes it', async () => {

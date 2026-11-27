@@ -75,6 +75,8 @@ export const NETWORK_BY_COIN: Record<Stablecoin, string> = {
 };
 
 const AUTH_TIMEOUT_MS = 5_000;
+// The app matches this to send the customer to the address form.
+export const ADDRESS_NEEDED = 'Add your home address to convert.';
 
 // Smallest stablecoin amount a customer can convert to naira.
 export const MIN_CONVERSION = new Decimal(10);
@@ -121,6 +123,12 @@ interface AuthUser {
   firstName: string;
   lastName: string;
   tier: string;
+}
+
+interface AuthProfile {
+  dateOfBirth: string | null;
+  phone: string | null;
+  homeAddress: { address: string; lga: string; state: string } | null;
 }
 
 @Injectable()
@@ -176,6 +184,10 @@ export class CryptoService {
       if (existing) return this.summary(dto.currency, wallet.balance, existing);
 
       const customer = await this.getOrCreateCustomer(userId, user, dto);
+      // Receiving works without it; convert retries and enforces it.
+      await this.completeProfile(customer).catch((err: Error) =>
+        this.logger.warn(`Profile for ${userId} not completed: ${err.message}`),
+      );
       const created = await this.client.createWallet({
         customerId: customer.stablestackCustomerId,
         currency: dto.currency,
@@ -257,6 +269,7 @@ export class CryptoService {
     }
     await this.pinVerifier.assertValid(userId, dto.pin);
     const customer = await this.customerOrFail(userId);
+    await this.completeProfile(customer);
     const [wallet, ngnWallet] = await Promise.all([
       this.walletsService.findByUserAndCurrency(userId, dto.currency),
       this.walletsService.findByUserAndCurrency(userId, CurrencyCode.NGN),
@@ -739,31 +752,78 @@ export class CryptoService {
     };
   }
 
+  // StableStack refuses naira payouts (422) until the customer has a date of
+  // birth and home address, so send everything we hold about them. Sent on
+  // every conversion so it never goes stale.
+  private async completeProfile(customer: StableStackCustomer): Promise<void> {
+    const profile = await this.fromAuth<AuthProfile>(
+      customer.userId,
+      'profile',
+    );
+    if (!profile) {
+      throw new ServiceUnavailableException(
+        'Converting is unavailable right now. Please try again.',
+      );
+    }
+    const home = profile.homeAddress;
+    if (!home) throw new BadRequestException(ADDRESS_NEEDED);
+    if (!profile.dateOfBirth) {
+      throw new BadRequestException(
+        "We're missing your date of birth. Please contact support.",
+      );
+    }
+    const answers = customer.compliance;
+    await this.client.updateCustomer(customer.stablestackCustomerId, {
+      birth_date: profile.dateOfBirth,
+      ...(profile.phone ? { phone: `+${profile.phone}` } : {}),
+      account_purpose: answers.accountPurpose,
+      source_of_funds: answers.sourceOfFunds,
+      employment_status: answers.employmentStatus,
+      most_recent_occupation: answers.occupation,
+      expected_monthly_income: answers.expectedMonthlyIncome,
+      address: {
+        line_1: home.address,
+        city: home.lga,
+        state: home.state,
+        country: 'NG',
+      },
+    });
+  }
+
   // Name, email and tier live in apps/auth. Fails closed: no tier, no wallet.
   private async lookupUser(userId: string): Promise<AuthUser> {
+    const user = await this.fromAuth<Partial<AuthUser>>(userId, 'contact');
+    if (user?.email && user.firstName && user.lastName && user.tier) {
+      return user as AuthUser;
+    }
+    throw new ServiceUnavailableException(
+      'Stablecoin wallets are unavailable right now. Please try again.',
+    );
+  }
+
+  // null when auth is unreachable or answers with an error (logged).
+  private async fromAuth<T>(
+    userId: string,
+    path: 'contact' | 'profile',
+  ): Promise<T | null> {
     const { internalUrl, internalApiKey } = this.configService.get('auth', {
       infer: true,
     });
     try {
       const response = await fetch(
-        `${internalUrl}/internal/users/${encodeURIComponent(userId)}/contact`,
+        `${internalUrl}/internal/users/${encodeURIComponent(userId)}/${path}`,
         {
           headers: { 'x-internal-key': internalApiKey },
           signal: AbortSignal.timeout(AUTH_TIMEOUT_MS),
         },
       );
-      if (response.ok) {
-        const user = (await response.json()) as Partial<AuthUser>;
-        if (user.email && user.firstName && user.lastName && user.tier) {
-          return user as AuthUser;
-        }
-      }
-      this.logger.error(`User lookup for ${userId} failed: ${response.status}`);
+      if (response.ok) return (await response.json()) as T;
+      this.logger.error(
+        `User ${path} lookup for ${userId} failed: ${response.status}`,
+      );
     } catch (err) {
       this.logger.error(`User lookup unreachable: ${(err as Error).message}`);
     }
-    throw new ServiceUnavailableException(
-      'Stablecoin wallets are unavailable right now. Please try again.',
-    );
+    return null;
   }
 }

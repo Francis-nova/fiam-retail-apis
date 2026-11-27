@@ -86,6 +86,19 @@ export class StableStackClient {
     return { id: data.id, address: address.address, network: address.network };
   }
 
+  // The full profile StableStack needs before it pays naira out. Creation
+  // only takes name and email.
+  async updateCustomer(
+    customerId: string,
+    profile: Record<string, unknown>,
+  ): Promise<void> {
+    await this.request(
+      'PUT',
+      `/individual-customers/${encodeURIComponent(customerId)}`,
+      profile,
+    );
+  }
+
   async isValidAddress(currency: string, address: string): Promise<boolean> {
     const data = await this.request<{ valid?: boolean }>(
       'GET',
@@ -199,7 +212,7 @@ export class StableStackClient {
   }
 
   private async request<T>(
-    method: 'GET' | 'POST',
+    method: 'GET' | 'POST' | 'PUT',
     path: string,
     body?: Record<string, unknown>,
   ): Promise<T> {
